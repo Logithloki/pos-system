@@ -39,6 +39,9 @@ public sealed class CheckoutService : ICheckoutService
     {
         ValidateRequest(request);
         var normalizedIdempotencyKey = request.IdempotencyKey.Trim();
+        var sanitizedIdempotencyKey = normalizedIdempotencyKey
+            .Replace("\r", string.Empty, StringComparison.Ordinal)
+            .Replace("\n", string.Empty, StringComparison.Ordinal);
 
         var existingOrder = await _dbContext.SalesOrders
             .AsNoTracking()
@@ -192,7 +195,7 @@ public sealed class CheckoutService : ICheckoutService
         {
             await transaction.RollbackAsync(cancellationToken);
             _dbContext.ChangeTracker.Clear();
-            _logger.LogWarning(ex, "Checkout failed due to a concurrency conflict for idempotency key {IdempotencyKey}.", normalizedIdempotencyKey);
+            _logger.LogWarning(ex, "Checkout failed due to a concurrency conflict for idempotency key {IdempotencyKey}.", sanitizedIdempotencyKey);
             throw new AppValidationException("A concurrent operation changed inventory during checkout. Please retry.");
         }
         catch (DbUpdateException ex)
@@ -208,7 +211,7 @@ public sealed class CheckoutService : ICheckoutService
                 return BuildResponse(replay, true);
             }
 
-            _logger.LogError(ex, "Checkout persistence failed for idempotency key {IdempotencyKey}.", normalizedIdempotencyKey);
+            _logger.LogError(ex, "Checkout persistence failed for idempotency key {IdempotencyKey}.", sanitizedIdempotencyKey);
             throw;
         }
         catch
