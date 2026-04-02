@@ -194,6 +194,11 @@ public sealed class PosDbContext : DbContext
             ResetConcurrencyEntries(ex);
             throw;
         }
+        catch (DbUpdateException)
+        {
+            ResetVersionIncrementsAfterFailedSave();
+            throw;
+        }
     }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -207,6 +212,11 @@ public sealed class PosDbContext : DbContext
         catch (DbUpdateConcurrencyException ex)
         {
             await ResetConcurrencyEntriesAsync(ex, cancellationToken);
+            throw;
+        }
+        catch (DbUpdateException)
+        {
+            ResetVersionIncrementsAfterFailedSave();
             throw;
         }
     }
@@ -290,6 +300,24 @@ public sealed class PosDbContext : DbContext
             entry.CurrentValues.SetValues(databaseValues);
             entry.OriginalValues.SetValues(databaseValues);
             entry.State = EntityState.Unchanged;
+        }
+    }
+
+    private void ResetVersionIncrementsAfterFailedSave()
+    {
+        foreach (var entry in ChangeTracker.Entries<IConcurrencyTracked>())
+        {
+            if (entry.State != EntityState.Modified)
+            {
+                continue;
+            }
+
+            var versionProperty = entry.Property(nameof(IConcurrencyTracked.Version));
+            if (versionProperty.OriginalValue is long originalVersion)
+            {
+                versionProperty.CurrentValue = originalVersion;
+                entry.Entity.Version = originalVersion;
+            }
         }
     }
 }

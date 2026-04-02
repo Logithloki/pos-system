@@ -38,10 +38,11 @@ public sealed class CheckoutService : ICheckoutService
     public async Task<CheckoutResponse> ProcessCheckoutAsync(CheckoutRequest request, CancellationToken cancellationToken = default)
     {
         ValidateRequest(request);
+        var normalizedIdempotencyKey = request.IdempotencyKey.Trim();
 
         var existingOrder = await _dbContext.SalesOrders
             .AsNoTracking()
-            .SingleOrDefaultAsync(x => x.IdempotencyKey == request.IdempotencyKey, cancellationToken);
+            .SingleOrDefaultAsync(x => x.IdempotencyKey == normalizedIdempotencyKey, cancellationToken);
 
         if (existingOrder is not null)
         {
@@ -116,7 +117,7 @@ public sealed class CheckoutService : ICheckoutService
             var order = new SalesOrder
             {
                 ReceiptNumber = $"TMP-{Guid.NewGuid():N}",
-                IdempotencyKey = request.IdempotencyKey.Trim(),
+                IdempotencyKey = normalizedIdempotencyKey,
                 UserId = user.Id,
                 CustomerId = request.CustomerId,
                 OrderType = SalesOrderType.Sale,
@@ -166,31 +167,24 @@ public sealed class CheckoutService : ICheckoutService
             _dbContext.Receipts.Add(receipt);
             await _dbContext.SaveChangesAsync(cancellationToken);
 
-            await transaction.CommitAsync(cancellationToken);
+            await _auditLogService.WriteAsync(
+                new AuditLogEntry
+                {
+                    UserId = user.Id,
+                    Action = "CheckoutComplete",
+                    ResourceType = "SalesOrder",
+                    ResourceId = order.Id.ToString(),
+                    Status = "Success",
+                    MetadataJson = JsonSerializer.Serialize(
+                        new
+                        {
+                            receiptNumber = order.ReceiptNumber,
+                            idempotencyKey = order.IdempotencyKey,
+                        }),
+                },
+                cancellationToken);
 
-            try
-            {
-                await _auditLogService.WriteAsync(
-                    new AuditLogEntry
-                    {
-                        UserId = user.Id,
-                        Action = "CheckoutComplete",
-                        ResourceType = "SalesOrder",
-                        ResourceId = order.Id.ToString(),
-                        Status = "Success",
-                        MetadataJson = JsonSerializer.Serialize(
-                            new
-                            {
-                                receiptNumber = order.ReceiptNumber,
-                                idempotencyKey = order.IdempotencyKey,
-                            }),
-                    },
-                    cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Audit log write failed for SalesOrder {SalesOrderId}. Audit trail may be incomplete.", order.Id);
-            }
+            await transaction.CommitAsync(cancellationToken);
 
             return BuildResponse(order, false);
         }
@@ -198,7 +192,7 @@ public sealed class CheckoutService : ICheckoutService
         {
             await transaction.RollbackAsync(cancellationToken);
             _dbContext.ChangeTracker.Clear();
-            _logger.LogWarning(ex, "Checkout failed due to a concurrency conflict for idempotency key {IdempotencyKey}.", request.IdempotencyKey);
+            _logger.LogWarning(ex, "Checkout failed due to a concurrency conflict for idempotency key {IdempotencyKey}.", normalizedIdempotencyKey);
             throw new AppValidationException("A concurrent operation changed inventory during checkout. Please retry.");
         }
         catch (DbUpdateException ex)
@@ -207,14 +201,14 @@ public sealed class CheckoutService : ICheckoutService
 
             var replay = await _dbContext.SalesOrders
                 .AsNoTracking()
-                .SingleOrDefaultAsync(x => x.IdempotencyKey == request.IdempotencyKey, cancellationToken);
+                .SingleOrDefaultAsync(x => x.IdempotencyKey == normalizedIdempotencyKey, cancellationToken);
 
             if (replay is not null)
             {
                 return BuildResponse(replay, true);
             }
 
-            _logger.LogError(ex, "Checkout persistence failed for idempotency key {IdempotencyKey}.", request.IdempotencyKey);
+            _logger.LogError(ex, "Checkout persistence failed for idempotency key {IdempotencyKey}.", normalizedIdempotencyKey);
             throw;
         }
         catch

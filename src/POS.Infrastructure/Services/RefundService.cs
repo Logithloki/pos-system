@@ -163,31 +163,25 @@ public sealed class RefundService : IRefundService
 
             _dbContext.Receipts.Add(receipt);
             await _dbContext.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
 
-            try
-            {
-                await _auditLogService.WriteAsync(
-                    new AuditLogEntry
-                    {
-                        UserId = requestedBy.Id,
-                        Action = "RefundReversalCreated",
-                        ResourceType = "SalesOrder",
-                        ResourceId = reversal.Id.ToString(),
-                        Status = "Success",
-                        MetadataJson = JsonSerializer.Serialize(
-                            new
-                            {
-                                originalSalesOrderId = originalOrder.Id,
-                                reason = request.Reason,
-                            }),
-                    },
-                    cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Audit log write failed for refund SalesOrder {SalesOrderId}. Audit trail may be incomplete.", reversal.Id);
-            }
+            await _auditLogService.WriteAsync(
+                new AuditLogEntry
+                {
+                    UserId = requestedBy.Id,
+                    Action = "RefundReversalCreated",
+                    ResourceType = "SalesOrder",
+                    ResourceId = reversal.Id.ToString(),
+                    Status = "Success",
+                    MetadataJson = JsonSerializer.Serialize(
+                        new
+                        {
+                            originalSalesOrderId = originalOrder.Id,
+                            reason = request.Reason,
+                        }),
+                },
+                cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
 
             return new RefundResponse
             {
