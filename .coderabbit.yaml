@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "en-US"
+
+reviews:
+  profile: "assertive"
+  review_status: true
+  review_details: true
+  auto_review:
+    enabled: true
+    drafts: false
+  # Keep full changed-file coverage (no restrictive filters)
+  path_filters:
+    - "**"
+
+chat:
+  auto_reply: true
