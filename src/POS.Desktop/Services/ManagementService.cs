@@ -613,27 +613,7 @@ public sealed class ManagementService : IManagementService
         using var scope = _scopeFactory.CreateScope();
         var backupService = scope.ServiceProvider.GetRequiredService<IBackupRestoreService>();
 
-        const int backupPageSize = 200;
-        var allBackups = new List<BackupResult>();
-        var skip = 0;
-
-        while (true)
-        {
-            var page = await backupService.ListBackupsAsync(skip, backupPageSize, cancellationToken);
-            if (page.Count == 0)
-            {
-                break;
-            }
-
-            allBackups.AddRange(page);
-
-            if (page.Count < backupPageSize)
-            {
-                break;
-            }
-
-            skip += page.Count;
-        }
+        var allBackups = await backupService.ListAllBackupsAsync(cancellationToken);
 
         return allBackups
             .OrderByDescending(x => x.CreatedUtc)

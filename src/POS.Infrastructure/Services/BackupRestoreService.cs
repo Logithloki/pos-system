@@ -171,6 +171,30 @@ public sealed class BackupRestoreService : IBackupRestoreService
         };
     }
 
+    public Task<IReadOnlyCollection<BackupResult>> ListAllBackupsAsync(CancellationToken cancellationToken = default)
+    {
+        var resolved = ResolveOptions();
+
+        if (!Directory.Exists(resolved.BackupDirectory))
+        {
+            return Task.FromResult<IReadOnlyCollection<BackupResult>>(Array.Empty<BackupResult>());
+        }
+
+        var files = Directory.GetFiles(resolved.BackupDirectory, "*.db", SearchOption.TopDirectoryOnly)
+            .OrderByDescending(path => path)
+            .Select(
+                path => new BackupResult
+                {
+                    FilePath = path,
+                    ChecksumSha256 = TryComputeFileChecksum(path),
+                    CreatedUtc = File.GetCreationTimeUtc(path),
+                    IsAutomatic = path.Contains("_auto", StringComparison.OrdinalIgnoreCase),
+                })
+            .ToArray();
+
+        return Task.FromResult<IReadOnlyCollection<BackupResult>>(files);
+    }
+
     public Task<IReadOnlyCollection<BackupResult>> ListBackupsAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default)
     {
         if (skip < 0)

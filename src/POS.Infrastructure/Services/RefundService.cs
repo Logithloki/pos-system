@@ -200,6 +200,7 @@ public sealed class RefundService : IRefundService
         catch (DbUpdateException ex)
         {
             await transaction.RollbackAsync(cancellationToken);
+            _dbContext.ChangeTracker.Clear();
 
             var replay = await _dbContext.SalesOrders
                 .AsNoTracking()
@@ -223,6 +224,7 @@ public sealed class RefundService : IRefundService
         catch
         {
             await transaction.RollbackAsync(cancellationToken);
+            _dbContext.ChangeTracker.Clear();
             throw;
         }
     }

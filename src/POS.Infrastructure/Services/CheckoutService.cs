@@ -49,6 +49,7 @@ public sealed class CheckoutService : ICheckoutService
 
         if (existingOrder is not null)
         {
+            EnsureReplayOwnership(existingOrder, request.UserId);
             return BuildResponse(existingOrder, true);
         }
 
@@ -201,6 +202,7 @@ public sealed class CheckoutService : ICheckoutService
         catch (DbUpdateException ex)
         {
             await transaction.RollbackAsync(cancellationToken);
+            _dbContext.ChangeTracker.Clear();
 
             var replay = await _dbContext.SalesOrders
                 .AsNoTracking()
@@ -208,6 +210,7 @@ public sealed class CheckoutService : ICheckoutService
 
             if (replay is not null)
             {
+                EnsureReplayOwnership(replay, request.UserId);
                 return BuildResponse(replay, true);
             }
 
@@ -217,7 +220,16 @@ public sealed class CheckoutService : ICheckoutService
         catch
         {
             await transaction.RollbackAsync(cancellationToken);
+            _dbContext.ChangeTracker.Clear();
             throw;
+        }
+    }
+
+    private static void EnsureReplayOwnership(SalesOrder replayOrder, long requestedByUserId)
+    {
+        if (replayOrder.UserId != requestedByUserId)
+        {
+            throw new AppValidationException("Idempotency key is already in use for another operator.");
         }
     }
 
