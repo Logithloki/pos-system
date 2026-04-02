@@ -47,13 +47,17 @@ public sealed class GlobalExceptionMiddleware
             ? value?.ToString()
             : null;
 
+        var sanitizedPath = context.Request.Path.ToString()
+            .Replace("\r", string.Empty, StringComparison.Ordinal)
+            .Replace("\n", string.Empty, StringComparison.Ordinal);
+
         if (exception is null)
         {
             _logger.LogWarning(
                 "Request failed. StatusCode={StatusCode} Code={Code} Path={Path} CorrelationId={CorrelationId}",
                 statusCode,
                 code,
-                context.Request.Path,
+                sanitizedPath,
                 correlationId);
         }
         else
@@ -63,7 +67,7 @@ public sealed class GlobalExceptionMiddleware
                 "Request failed. StatusCode={StatusCode} Code={Code} Path={Path} CorrelationId={CorrelationId}",
                 statusCode,
                 code,
-                context.Request.Path,
+                sanitizedPath,
                 correlationId);
         }
 
