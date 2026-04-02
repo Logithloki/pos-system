@@ -613,9 +613,9 @@ public sealed class ManagementService : IManagementService
         using var scope = _scopeFactory.CreateScope();
         var backupService = scope.ServiceProvider.GetRequiredService<IBackupRestoreService>();
 
-        var backups = await backupService.ListBackupsAsync(cancellationToken);
+        var allBackups = await backupService.ListAllBackupsAsync(cancellationToken);
 
-        return backups
+        return allBackups
             .OrderByDescending(x => x.CreatedUtc)
             .Select(x => new BackupItem(x.FilePath, x.CreatedUtc, x.IsAutomatic, "Available"))
             .ToArray();

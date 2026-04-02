@@ -53,10 +53,17 @@ Set these environment variables before first API run:
 
 - POS_ADMIN_USERNAME
 - POS_ADMIN_PASSWORD
+- Security__JwtSigningKey (required, 32+ random characters)
 - POS_STORE_NAME (optional)
 - POS_DB_PATH (optional, design-time migration path)
 
 A template is provided in .env.example.
+
+Security notes:
+
+- API startup fails if Security__JwtSigningKey is missing, too short, or a default placeholder value.
+- Login endpoint is protected by fixed-window rate limiting.
+- HTTPS redirection is enabled; HSTS is enabled outside development.
 
 ## Build and Test
 
@@ -96,7 +103,7 @@ To apply migrations, start the API. Startup runs migration + optional admin seed
 - POST /api/auth/login
 - POST /api/checkout
 - POST /api/refunds
-- GET /api/backup
+- GET /api/backup?skip=0&take=100
 - POST /api/backup/manual
 - POST /api/backup/restore
 - POST /api/receipts/print/{receiptId}
@@ -107,5 +114,6 @@ To apply migrations, start the API. Startup runs migration + optional admin seed
 
 - Receipt records are immutable and cannot be edited or deleted.
 - Refunds are implemented as reversal sales records linked to the original sale.
+- Partial refunds are not supported in this release; refund operations always reverse the full sale.
 - Backup and print behavior is validated in automated tests.
 - Checkout calls the same transactional service used by API flows to preserve integrity guarantees.

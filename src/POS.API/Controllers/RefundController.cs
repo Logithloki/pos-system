@@ -8,7 +8,7 @@ namespace POS.API.Controllers;
 [ApiController]
 [Authorize(Policy = "AdminOnly")]
 [Route("api/refunds")]
-public sealed class RefundController : ControllerBase
+public sealed class RefundController : PosControllerBase
 {
     private readonly IRefundService _refundService;
 
@@ -21,7 +21,16 @@ public sealed class RefundController : ControllerBase
     [ProducesResponseType(typeof(RefundResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<RefundResponse>> CreateRefund([FromBody] RefundRequest request, CancellationToken cancellationToken)
     {
-        var response = await _refundService.CreateRefundAsync(request, cancellationToken);
+        var authenticatedUserId = GetAuthenticatedUserId();
+
+        var normalizedRequest = new RefundRequest
+        {
+            SalesOrderId = request.SalesOrderId,
+            RequestedByUserId = authenticatedUserId,
+            Reason = request.Reason,
+        };
+
+        var response = await _refundService.CreateRefundAsync(normalizedRequest, cancellationToken);
         return Ok(response);
     }
 }

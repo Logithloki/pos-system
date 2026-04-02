@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using POS.Application.Abstractions;
@@ -37,13 +38,18 @@ public sealed class CheckoutService : ICheckoutService
     public async Task<CheckoutResponse> ProcessCheckoutAsync(CheckoutRequest request, CancellationToken cancellationToken = default)
     {
         ValidateRequest(request);
+        var normalizedIdempotencyKey = request.IdempotencyKey.Trim();
+        var sanitizedIdempotencyKey = normalizedIdempotencyKey
+            .Replace("\r", string.Empty, StringComparison.Ordinal)
+            .Replace("\n", string.Empty, StringComparison.Ordinal);
 
         var existingOrder = await _dbContext.SalesOrders
             .AsNoTracking()
-            .SingleOrDefaultAsync(x => x.IdempotencyKey == request.IdempotencyKey, cancellationToken);
+            .SingleOrDefaultAsync(x => x.IdempotencyKey == normalizedIdempotencyKey, cancellationToken);
 
         if (existingOrder is not null)
         {
+            EnsureReplayOwnership(existingOrder, request.UserId);
             return BuildResponse(existingOrder, true);
         }
 
@@ -115,7 +121,7 @@ public sealed class CheckoutService : ICheckoutService
             var order = new SalesOrder
             {
                 ReceiptNumber = $"TMP-{Guid.NewGuid():N}",
-                IdempotencyKey = request.IdempotencyKey.Trim(),
+                IdempotencyKey = normalizedIdempotencyKey,
                 UserId = user.Id,
                 CustomerId = request.CustomerId,
                 OrderType = SalesOrderType.Sale,
@@ -165,8 +171,6 @@ public sealed class CheckoutService : ICheckoutService
             _dbContext.Receipts.Add(receipt);
             await _dbContext.SaveChangesAsync(cancellationToken);
 
-            await transaction.CommitAsync(cancellationToken);
-
             await _auditLogService.WriteAsync(
                 new AuditLogEntry
                 {
@@ -175,38 +179,57 @@ public sealed class CheckoutService : ICheckoutService
                     ResourceType = "SalesOrder",
                     ResourceId = order.Id.ToString(),
                     Status = "Success",
-                    MetadataJson = $"{{\"receiptNumber\":\"{order.ReceiptNumber}\",\"idempotencyKey\":\"{order.IdempotencyKey}\"}}",
+                    MetadataJson = JsonSerializer.Serialize(
+                        new
+                        {
+                            receiptNumber = order.ReceiptNumber,
+                            idempotencyKey = order.IdempotencyKey,
+                        }),
                 },
                 cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
 
             return BuildResponse(order, false);
         }
         catch (DbUpdateConcurrencyException ex)
         {
             await transaction.RollbackAsync(cancellationToken);
-            _logger.LogWarning(ex, "Checkout failed due to a concurrency conflict for idempotency key {IdempotencyKey}.", request.IdempotencyKey);
+            _dbContext.ChangeTracker.Clear();
+            _logger.LogWarning(ex, "Checkout failed due to a concurrency conflict for idempotency key {IdempotencyKey}.", sanitizedIdempotencyKey);
             throw new AppValidationException("A concurrent operation changed inventory during checkout. Please retry.");
         }
         catch (DbUpdateException ex)
         {
             await transaction.RollbackAsync(cancellationToken);
+            _dbContext.ChangeTracker.Clear();
 
             var replay = await _dbContext.SalesOrders
                 .AsNoTracking()
-                .SingleOrDefaultAsync(x => x.IdempotencyKey == request.IdempotencyKey, cancellationToken);
+                .SingleOrDefaultAsync(x => x.IdempotencyKey == normalizedIdempotencyKey, cancellationToken);
 
             if (replay is not null)
             {
+                EnsureReplayOwnership(replay, request.UserId);
                 return BuildResponse(replay, true);
             }
 
-            _logger.LogError(ex, "Checkout persistence failed for idempotency key {IdempotencyKey}.", request.IdempotencyKey);
+            _logger.LogError(ex, "Checkout persistence failed for idempotency key {IdempotencyKey}.", sanitizedIdempotencyKey);
             throw;
         }
         catch
         {
             await transaction.RollbackAsync(cancellationToken);
+            _dbContext.ChangeTracker.Clear();
             throw;
+        }
+    }
+
+    private static void EnsureReplayOwnership(SalesOrder replayOrder, long requestedByUserId)
+    {
+        if (replayOrder.UserId != requestedByUserId)
+        {
+            throw new AppValidationException("Idempotency key is already in use for another operator.");
         }
     }
 
@@ -220,6 +243,11 @@ public sealed class CheckoutService : ICheckoutService
         if (string.IsNullOrWhiteSpace(request.IdempotencyKey))
         {
             throw new AppValidationException("Idempotency key is required.");
+        }
+
+        if (request.IdempotencyKey.Trim().Length > 120)
+        {
+            throw new AppValidationException("Idempotency key must not exceed 120 characters.");
         }
 
         if (request.Items.Count == 0)
@@ -240,6 +268,11 @@ public sealed class CheckoutService : ICheckoutService
         if (request.TaxRatePercent < 0)
         {
             throw new AppValidationException("Tax rate cannot be negative.");
+        }
+
+        if (request.TaxRatePercent > 100)
+        {
+            throw new AppValidationException("Tax rate percent cannot exceed 100.");
         }
     }
 
