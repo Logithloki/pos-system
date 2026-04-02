@@ -53,10 +53,17 @@ Set these environment variables before first API run:
 
 - POS_ADMIN_USERNAME
 - POS_ADMIN_PASSWORD
+- Security__JwtSigningKey (required, 32+ random characters)
 - POS_STORE_NAME (optional)
 - POS_DB_PATH (optional, design-time migration path)
 
 A template is provided in .env.example.
+
+Security notes:
+
+- API startup fails if Security__JwtSigningKey is missing, too short, or a default placeholder value.
+- Login endpoint is protected by fixed-window rate limiting.
+- HTTPS redirection is enabled; HSTS is enabled outside development.
 
 ## Build and Test
 

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -76,7 +77,7 @@ public sealed class BackupRestoreService : IBackupRestoreService
                 ResourceType = "Backup",
                 ResourceId = backupFilePath,
                 Status = "Success",
-                MetadataJson = $"{{\"checksum\":\"{checksum}\"}}",
+                MetadataJson = JsonSerializer.Serialize(new { checksum }),
             },
             cancellationToken);
 
@@ -99,7 +100,17 @@ public sealed class BackupRestoreService : IBackupRestoreService
         }
 
         var resolved = ResolveOptions();
-        var backupFilePath = request.BackupFilePath.Trim();
+        var requestedBackupPath = request.BackupFilePath.Trim();
+        var backupFilePath = Path.GetFullPath(requestedBackupPath);
+        var backupDirectoryPath = Path.GetFullPath(resolved.BackupDirectory);
+        var pathBoundary = backupDirectoryPath.EndsWith(Path.DirectorySeparatorChar)
+            ? backupDirectoryPath
+            : backupDirectoryPath + Path.DirectorySeparatorChar;
+
+        if (!backupFilePath.StartsWith(pathBoundary, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new AppValidationException("Backup file must be inside the configured backup directory.");
+        }
 
         if (!File.Exists(backupFilePath))
         {
@@ -141,7 +152,7 @@ public sealed class BackupRestoreService : IBackupRestoreService
                 ResourceType = "Backup",
                 ResourceId = backupFilePath,
                 Status = "Success",
-                MetadataJson = $"{{\"safetyBackupPath\":\"{EscapeJson(safetyBackupPath)}\"}}",
+                MetadataJson = JsonSerializer.Serialize(new { safetyBackupPath }),
             },
             cancellationToken);
 
@@ -240,16 +251,6 @@ public sealed class BackupRestoreService : IBackupRestoreService
         using var stream = File.OpenRead(filePath);
         var hash = SHA256.HashData(stream);
         return Convert.ToHexString(hash);
-    }
-
-    private static string EscapeJson(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return string.Empty;
-        }
-
-        return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
     }
 
     private sealed record ResolvedBackupOptions(string DatabaseFilePath, string BackupDirectory, int RetentionDays);

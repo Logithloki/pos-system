@@ -20,13 +20,20 @@ public sealed class GlobalExceptionMiddleware
         {
             await _next(context);
         }
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+        {
+            if (!context.Response.HasStarted)
+            {
+                context.Response.StatusCode = 499;
+            }
+        }
         catch (AppValidationException ex)
         {
             await HandleExceptionAsync(context, StatusCodes.Status400BadRequest, "ValidationError", ex.Message, ex);
         }
-        catch (UnauthorizedAccessException ex)
+        catch (UnauthorizedAccessException)
         {
-            await HandleExceptionAsync(context, StatusCodes.Status403Forbidden, "Forbidden", ex.Message, ex);
+            await HandleExceptionAsync(context, StatusCodes.Status403Forbidden, "Forbidden", "Access denied.", null);
         }
         catch (Exception ex)
         {
@@ -34,19 +41,31 @@ public sealed class GlobalExceptionMiddleware
         }
     }
 
-    private async Task HandleExceptionAsync(HttpContext context, int statusCode, string code, string message, Exception exception)
+    private async Task HandleExceptionAsync(HttpContext context, int statusCode, string code, string message, Exception? exception)
     {
         var correlationId = context.Items.TryGetValue(CorrelationIdMiddleware.ContextKey, out var value)
             ? value?.ToString()
             : null;
 
-        _logger.LogError(
-            exception,
-            "Request failed. StatusCode={StatusCode} Code={Code} Path={Path} CorrelationId={CorrelationId}",
-            statusCode,
-            code,
-            context.Request.Path,
-            correlationId);
+        if (exception is null)
+        {
+            _logger.LogWarning(
+                "Request failed. StatusCode={StatusCode} Code={Code} Path={Path} CorrelationId={CorrelationId}",
+                statusCode,
+                code,
+                context.Request.Path,
+                correlationId);
+        }
+        else
+        {
+            _logger.LogError(
+                exception,
+                "Request failed. StatusCode={StatusCode} Code={Code} Path={Path} CorrelationId={CorrelationId}",
+                statusCode,
+                code,
+                context.Request.Path,
+                correlationId);
+        }
 
         context.Response.StatusCode = statusCode;
         context.Response.ContentType = "application/json";

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using POS.Application.Abstractions;
@@ -175,7 +176,12 @@ public sealed class CheckoutService : ICheckoutService
                     ResourceType = "SalesOrder",
                     ResourceId = order.Id.ToString(),
                     Status = "Success",
-                    MetadataJson = $"{{\"receiptNumber\":\"{order.ReceiptNumber}\",\"idempotencyKey\":\"{order.IdempotencyKey}\"}}",
+                    MetadataJson = JsonSerializer.Serialize(
+                        new
+                        {
+                            receiptNumber = order.ReceiptNumber,
+                            idempotencyKey = order.IdempotencyKey,
+                        }),
                 },
                 cancellationToken);
 
@@ -240,6 +246,11 @@ public sealed class CheckoutService : ICheckoutService
         if (request.TaxRatePercent < 0)
         {
             throw new AppValidationException("Tax rate cannot be negative.");
+        }
+
+        if (request.TaxRatePercent > 100)
+        {
+            throw new AppValidationException("Tax rate percent cannot exceed 100.");
         }
     }
 

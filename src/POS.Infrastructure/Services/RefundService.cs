@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using POS.Application.Abstractions;
@@ -46,13 +47,20 @@ public sealed class RefundService : IRefundService
             throw new UnauthorizedAccessException("Only admins can create refunds.");
         }
 
-        var existingReversal = await _dbContext.SalesOrders.AnyAsync(
+        var existingReversal = await _dbContext.SalesOrders
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
             x => x.OriginalSalesOrderId == request.SalesOrderId && x.OrderType == SalesOrderType.Reversal,
             cancellationToken);
 
-        if (existingReversal)
+        if (existingReversal is not null)
         {
-            throw new AppValidationException("A reversal already exists for this sales order.");
+            return new RefundResponse
+            {
+                ReversalSalesOrderId = existingReversal.Id,
+                ReversalReceiptNumber = existingReversal.ReceiptNumber,
+                ReversalTotal = existingReversal.TotalAfterTax,
+            };
         }
 
         var originalOrder = await _dbContext.SalesOrders
@@ -70,6 +78,11 @@ public sealed class RefundService : IRefundService
             throw new AppValidationException("Only completed sale orders can be reversed.");
         }
 
+        if (originalOrder.Status != SalesOrderStatus.Completed)
+        {
+            throw new AppValidationException("Only completed sale orders can be reversed.");
+        }
+
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
         try
@@ -77,7 +90,7 @@ public sealed class RefundService : IRefundService
             var reversal = new SalesOrder
             {
                 ReceiptNumber = $"TMP-{Guid.NewGuid():N}",
-                IdempotencyKey = $"refund-{Guid.NewGuid():N}",
+                IdempotencyKey = $"refund-{originalOrder.Id}",
                 UserId = requestedBy.Id,
                 CustomerId = originalOrder.CustomerId,
                 OrderType = SalesOrderType.Reversal,
@@ -160,7 +173,12 @@ public sealed class RefundService : IRefundService
                     ResourceType = "SalesOrder",
                     ResourceId = reversal.Id.ToString(),
                     Status = "Success",
-                    MetadataJson = $"{{\"originalSalesOrderId\":{originalOrder.Id},\"reason\":\"{EscapeJson(request.Reason)}\"}}",
+                    MetadataJson = JsonSerializer.Serialize(
+                        new
+                        {
+                            originalSalesOrderId = originalOrder.Id,
+                            reason = request.Reason,
+                        }),
                 },
                 cancellationToken);
 
@@ -177,6 +195,29 @@ public sealed class RefundService : IRefundService
             _logger.LogWarning(ex, "Refund reversal failed due to concurrency conflict for sales order {SalesOrderId}.", request.SalesOrderId);
             throw new AppValidationException("A concurrent stock update prevented refund completion. Please retry.");
         }
+        catch (DbUpdateException ex)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+
+            var replay = await _dbContext.SalesOrders
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    x => x.OriginalSalesOrderId == request.SalesOrderId && x.OrderType == SalesOrderType.Reversal,
+                    cancellationToken);
+
+            if (replay is not null)
+            {
+                return new RefundResponse
+                {
+                    ReversalSalesOrderId = replay.Id,
+                    ReversalReceiptNumber = replay.ReceiptNumber,
+                    ReversalTotal = replay.TotalAfterTax,
+                };
+            }
+
+            _logger.LogError(ex, "Refund persistence failed for original sales order {SalesOrderId}.", request.SalesOrderId);
+            throw;
+        }
         catch
         {
             await transaction.RollbackAsync(cancellationToken);
@@ -191,8 +232,4 @@ public sealed class RefundService : IRefundService
         return Convert.ToHexString(hash);
     }
 
-    private static string EscapeJson(string value)
-    {
-        return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
-    }
 }
