@@ -1,0 +1,903 @@
+<Window x:Class="POS.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="POS System"
+        Height="840"
+        Width="1420"
+        MinHeight="720"
+        MinWidth="1220"
+        WindowStartupLocation="CenterScreen"
+        Background="#F8FAFC"
+        PreviewKeyDown="Window_OnPreviewKeyDown">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+    </Window.Resources>
+
+    <Window.InputBindings>
+        <KeyBinding Key="F2" Command="{Binding Checkout.PayCommand}" />
+        <KeyBinding Key="Escape" Command="{Binding Checkout.ClearCartCommand}" />
+        <KeyBinding Key="Down" Command="{Binding Checkout.SelectNextCartItemCommand}" />
+        <KeyBinding Key="Up" Command="{Binding Checkout.SelectPreviousCartItemCommand}" />
+        <KeyBinding Key="Add" Command="{Binding Checkout.IncreaseQuantityCommand}" />
+        <KeyBinding Key="Subtract" Command="{Binding Checkout.DecreaseQuantityCommand}" />
+        <KeyBinding Key="Delete" Command="{Binding Checkout.RemoveSelectedItemCommand}" />
+    </Window.InputBindings>
+
+    <Grid Margin="10">
+        <TabControl x:Name="MainTabControl"
+                    SelectedIndex="{Binding SelectedTabIndex, Mode=TwoWay}"
+                    SelectionChanged="MainTabControl_OnSelectionChanged">
+            <TabItem Header="Checkout">
+                <Grid Margin="14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Padding="12" CornerRadius="10" Background="#0F172A">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel>
+                                <TextBlock Text="{Binding Checkout.InlineMessage}" FontSize="16" FontWeight="SemiBold">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="#86EFAC" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Checkout.IsInlineError}" Value="True">
+                                                    <Setter Property="Foreground" Value="#FCA5A5" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <TextBlock Text="{Binding Checkout.PerformanceText}" Foreground="#CBD5E1" Margin="0,4,0,0" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Operator:" Foreground="#CBD5E1" FontWeight="SemiBold" Margin="0,0,8,0" />
+                                <TextBlock Text="{Binding Checkout.OperatorDisplayName}" Foreground="White" FontWeight="Bold" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Grid Grid.Row="1" Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2.5*" />
+                            <ColumnDefinition Width="1.4*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Grid Grid.Column="0" Margin="0,0,12,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <Border Grid.Row="0" Padding="12" CornerRadius="10" Background="White">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel>
+                                        <TextBlock Text="Barcode" FontSize="14" FontWeight="SemiBold" Foreground="#334155" />
+                                        <TextBox x:Name="BarcodeInputBox"
+                                                 Margin="0,6,0,0"
+                                                 Height="44"
+                                                 FontSize="26"
+                                                 FontWeight="Bold"
+                                                 VerticalContentAlignment="Center"
+                                                 Text="{Binding Checkout.BarcodeInput, UpdateSourceTrigger=PropertyChanged}"
+                                                 KeyDown="BarcodeInputBox_OnKeyDown" />
+                                        <TextBlock Text="Enter: add item | F2: pay | Esc: clear cart | Arrows: cart navigation"
+                                                   Margin="0,6,0,0"
+                                                   Foreground="#64748B"
+                                                   FontSize="12" />
+                                    </StackPanel>
+
+                                    <Button Grid.Column="1"
+                                            Margin="12,24,0,0"
+                                            Width="110"
+                                            Height="44"
+                                            FontWeight="Bold"
+                                            Content="Add (Enter)"
+                                            Command="{Binding Checkout.AddByBarcodeCommand}" />
+                                </Grid>
+                            </Border>
+
+                            <Border Grid.Row="1" Margin="0,10,0,0" Padding="10" CornerRadius="10" Background="White">
+                                <DataGrid x:Name="CartGrid"
+                                          ItemsSource="{Binding Checkout.CartItems}"
+                                          SelectedItem="{Binding Checkout.SelectedCartItem, Mode=TwoWay}"
+                                          AutoGenerateColumns="False"
+                                          HeadersVisibility="Column"
+                                          IsReadOnly="True"
+                                          CanUserAddRows="False"
+                                          CanUserDeleteRows="False"
+                                          CanUserReorderColumns="False"
+                                          CanUserResizeRows="False"
+                                          SelectionMode="Single"
+                                          GridLinesVisibility="Horizontal"
+                                          RowHeight="38"
+                                          FontSize="14"
+                                          EnableRowVirtualization="True"
+                                          EnableColumnVirtualization="True"
+                                          VirtualizingPanel.IsVirtualizing="True"
+                                          VirtualizingPanel.VirtualizationMode="Recycling"
+                                          ScrollViewer.CanContentScroll="True">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Barcode" Binding="{Binding Barcode}" Width="1.2*" />
+                                        <DataGridTextColumn Header="Product" Binding="{Binding Name}" Width="2.6*" />
+                                        <DataGridTextColumn Header="Qty" Binding="{Binding Quantity}" Width="0.7*" />
+                                        <DataGridTextColumn Header="Price" Binding="{Binding UnitPrice, StringFormat={}{0:0.00}}" Width="1*" />
+                                        <DataGridTextColumn Header="Line Total" Binding="{Binding LineTotal, StringFormat={}{0:0.00}}" Width="1.1*" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Border>
+                        </Grid>
+
+                        <Border Grid.Column="1" Padding="12" CornerRadius="10" Background="White">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Text="Payment" FontSize="17" FontWeight="Bold" Foreground="#0F172A" />
+
+                                <Grid Grid.Row="1" Margin="0,12,0,0">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Text="Subtotal" Foreground="#334155" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Checkout.Subtotal, StringFormat={}{0:0.00}}" Foreground="#0F172A" FontWeight="SemiBold" />
+
+                                    <TextBlock Grid.Row="1" Text="Tax" Foreground="#334155" Margin="0,6,0,0" />
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Checkout.TaxAmount, StringFormat={}{0:0.00}}" Foreground="#0F172A" FontWeight="SemiBold" Margin="0,6,0,0" />
+
+                                    <TextBlock Grid.Row="2" Text="Total" Foreground="#0F172A" FontSize="21" FontWeight="Bold" Margin="0,8,0,0" />
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Checkout.Total, StringFormat={}{0:0.00}}" Foreground="#0F172A" FontSize="21" FontWeight="Bold" Margin="0,8,0,0" />
+
+                                    <TextBlock Grid.Row="3" Text="Change" Foreground="#334155" Margin="0,10,0,0" />
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Checkout.ChangeDue, StringFormat={}{0:0.00}}" Foreground="#0F172A" FontWeight="SemiBold" Margin="0,10,0,0" />
+                                </Grid>
+
+                                <StackPanel Grid.Row="2" Margin="0,12,0,0">
+                                    <TextBlock Text="Payment Method" Foreground="#334155" FontWeight="SemiBold" />
+                                    <ComboBox Margin="0,4,0,0"
+                                              Height="36"
+                                              FontSize="14"
+                                              ItemsSource="{Binding Checkout.PaymentMethods}"
+                                              SelectedItem="{Binding Checkout.SelectedPaymentMethod}" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="3" Margin="0,10,0,0">
+                                    <TextBlock Text="{Binding Checkout.AmountReceivedLabel}" Foreground="#334155" FontWeight="SemiBold" />
+                                    <TextBox x:Name="AmountReceivedInputBox"
+                                             Margin="0,4,0,0"
+                                             Height="38"
+                                             FontSize="18"
+                                             FontWeight="SemiBold"
+                                             VerticalContentAlignment="Center"
+                                             IsEnabled="{Binding Checkout.IsCashPayment}"
+                                             Text="{Binding Checkout.AmountTenderedInput, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0" Visibility="{Binding Checkout.IsCashPayment, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <Button Width="88" Height="30" Margin="0,0,6,0" Content="Exact" Command="{Binding Checkout.ApplyCashPresetCommand}" CommandParameter="0" />
+                                        <Button Width="88" Height="30" Margin="0,0,6,0" Content="+10" Command="{Binding Checkout.ApplyCashPresetCommand}" CommandParameter="10" />
+                                        <Button Width="88" Height="30" Margin="0,0,6,0" Content="+20" Command="{Binding Checkout.ApplyCashPresetCommand}" CommandParameter="20" />
+                                        <Button Width="88" Height="30" Content="+50" Command="{Binding Checkout.ApplyCashPresetCommand}" CommandParameter="50" />
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="4" Margin="0,14,0,0">
+                                    <CheckBox Content="Auto-print receipt after payment"
+                                              IsChecked="{Binding Checkout.AutoPrintReceiptEnabled}"
+                                              FontWeight="SemiBold"
+                                              Foreground="#334155"
+                                              Margin="0,0,0,10" />
+
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Width="130"
+                                                Height="44"
+                                                FontWeight="Bold"
+                                                Content="Pay (F2)"
+                                                Command="{Binding Checkout.PayCommand}" />
+                                        <Button Width="130"
+                                                Height="44"
+                                                Margin="10,0,0,0"
+                                                FontWeight="SemiBold"
+                                                Content="Clear (Esc)"
+                                                Command="{Binding Checkout.ClearCartCommand}" />
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <Border Grid.Row="5"
+                                        Margin="0,14,0,0"
+                                        Padding="10"
+                                        CornerRadius="8"
+                                        Background="#F1F5F9"
+                                        Visibility="{Binding Checkout.IsQuickAddVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <StackPanel>
+                                        <TextBlock Text="Quick Add Product" FontSize="14" FontWeight="Bold" Foreground="#0F172A" />
+
+                                        <TextBox Margin="0,8,0,0"
+                                                 Height="32"
+                                                 IsReadOnly="True"
+                                                 Text="{Binding Checkout.QuickAddBarcode}" />
+
+                                        <TextBox x:Name="QuickAddNameBox"
+                                                 Margin="0,6,0,0"
+                                                 Height="32"
+                                                 VerticalContentAlignment="Center"
+                                                 Text="{Binding Checkout.QuickAddName, UpdateSourceTrigger=PropertyChanged}"
+                                                 KeyDown="QuickAddBox_OnKeyDown" />
+
+                                        <Grid Margin="0,6,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox Grid.Column="0"
+                                                     Margin="0,0,6,0"
+                                                     Height="32"
+                                                     Text="{Binding Checkout.QuickAddPriceInput, UpdateSourceTrigger=PropertyChanged}"
+                                                     KeyDown="QuickAddBox_OnKeyDown" />
+                                            <TextBox Grid.Column="1"
+                                                     Margin="0,0,6,0"
+                                                     Height="32"
+                                                     Text="{Binding Checkout.QuickAddCostInput, UpdateSourceTrigger=PropertyChanged}"
+                                                     KeyDown="QuickAddBox_OnKeyDown" />
+                                            <TextBox Grid.Column="2"
+                                                     Height="32"
+                                                     Text="{Binding Checkout.QuickAddStockInput, UpdateSourceTrigger=PropertyChanged}"
+                                                     KeyDown="QuickAddBox_OnKeyDown" />
+                                        </Grid>
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                            <Button Width="120"
+                                                    Height="34"
+                                                    FontWeight="Bold"
+                                                    Content="Save + Add"
+                                                    Command="{Binding Checkout.QuickAddCommand}" />
+                                            <Button Width="90"
+                                                    Height="34"
+                                                    Margin="8,0,0,0"
+                                                    Content="Cancel"
+                                                    Command="{Binding Checkout.CancelQuickAddCommand}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <TextBlock Grid.Row="6"
+                                           Margin="0,14,0,0"
+                                           TextWrapping="Wrap"
+                                           Foreground="#64748B"
+                                           Text="Flow is optimized for speed: scan, adjust quantities with +/-/Delete, and pay with F2. Inline feedback replaces blocking dialogs." />
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Inventory" Visibility="{Binding IsManagementTabsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                        <Button Width="92" Height="34" Content="Refresh" Command="{Binding Inventory.RefreshCommand}" />
+                        <Button Width="110" Height="34" Margin="8,0,0,0" Content="New Product" Command="{Binding Inventory.NewProductCommand}" />
+                        <Button Width="110" Height="34" Margin="8,0,0,0" Content="Save Product" Command="{Binding Inventory.SaveProductCommand}" />
+                        <Button Width="110" Height="34" Margin="8,0,0,0" Content="Toggle Active" Command="{Binding Inventory.ToggleProductStatusCommand}" />
+                        <TextBlock Margin="16,8,0,0" FontWeight="Bold" Foreground="#0F172A" Text="{Binding Inventory.LowStockCount, StringFormat=Low Stock: {0}}" />
+                    </StackPanel>
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.9*" />
+                            <ColumnDefinition Width="1.2*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Background="White" CornerRadius="10" Padding="10" Margin="0,0,10,0">
+                            <DataGrid ItemsSource="{Binding Inventory.Products}"
+                                      SelectedItem="{Binding Inventory.SelectedProduct, Mode=TwoWay}"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True"
+                                      CanUserAddRows="False"
+                                      CanUserDeleteRows="False"
+                                      EnableRowVirtualization="True"
+                                      EnableColumnVirtualization="True"
+                                      VirtualizingPanel.IsVirtualizing="True"
+                                      VirtualizingPanel.VirtualizationMode="Recycling"
+                                      ScrollViewer.CanContentScroll="True"
+                                      RowHeight="34"
+                                      FontSize="13">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Barcode" Binding="{Binding Barcode}" Width="1.1*" />
+                                    <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="1.7*" />
+                                    <DataGridTextColumn Header="Supplier" Binding="{Binding SupplierName}" Width="1.2*" />
+                                    <DataGridTextColumn Header="Stock" Binding="{Binding QuantityOnHand}" Width="0.7*" />
+                                    <DataGridTextColumn Header="Reorder" Binding="{Binding ReorderLevel}" Width="0.7*" />
+                                    <DataGridTextColumn Header="Price" Binding="{Binding Price, StringFormat={}{0:0.00}}" Width="0.9*" />
+                                    <DataGridTextColumn Header="Cost" Binding="{Binding Cost, StringFormat={}{0:0.00}}" Width="0.9*" />
+                                    <DataGridCheckBoxColumn Header="Active" Binding="{Binding IsActive}" Width="0.6*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Border>
+
+                        <Border Grid.Column="1" Background="White" CornerRadius="10" Padding="12">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <TextBlock Text="Product Details" FontWeight="Bold" FontSize="15" Foreground="#0F172A" />
+
+                                    <TextBlock Margin="0,10,0,0" Text="Barcode" Foreground="#334155" />
+                                    <TextBox Margin="0,4,0,0" Height="32" Text="{Binding Inventory.Barcode, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <TextBlock Margin="0,8,0,0" Text="Name" Foreground="#334155" />
+                                    <TextBox Margin="0,4,0,0" Height="32" Text="{Binding Inventory.Name, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <Grid Margin="0,8,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                                            <TextBlock Text="Price" Foreground="#334155" />
+                                            <TextBox Margin="0,4,0,0" Height="32" Text="{Binding Inventory.PriceInput, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="1" Margin="6,0,0,0">
+                                            <TextBlock Text="Cost" Foreground="#334155" />
+                                            <TextBox Margin="0,4,0,0" Height="32" Text="{Binding Inventory.CostInput, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <Grid Margin="0,8,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                                            <TextBlock Text="Stock" Foreground="#334155" />
+                                            <TextBox Margin="0,4,0,0" Height="32" Text="{Binding Inventory.StockInput, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="1" Margin="6,0,0,0">
+                                            <TextBlock Text="Reorder" Foreground="#334155" />
+                                            <TextBox Margin="0,4,0,0" Height="32" Text="{Binding Inventory.ReorderInput, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <TextBlock Margin="0,8,0,0" Text="Supplier" Foreground="#334155" />
+                                    <ComboBox Margin="0,4,0,0"
+                                              Height="32"
+                                              ItemsSource="{Binding Inventory.Suppliers}"
+                                              DisplayMemberPath="Name"
+                                              SelectedValuePath="Id"
+                                              SelectedValue="{Binding Inventory.SelectedSupplierId, Mode=TwoWay}" />
+
+                                    <Separator Margin="0,12,0,12" />
+
+                                    <TextBlock Text="Stock Adjustment" FontWeight="Bold" Foreground="#0F172A" />
+                                    <TextBlock Margin="0,8,0,0" Text="Quantity Delta" Foreground="#334155" />
+                                    <TextBox Margin="0,4,0,0" Height="32" Text="{Binding Inventory.AdjustmentInput, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <TextBlock Margin="0,8,0,0" Text="Note" Foreground="#334155" />
+                                    <TextBox Margin="0,4,0,0" Height="64" TextWrapping="Wrap" AcceptsReturn="True" Text="{Binding Inventory.AdjustmentNote, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <Button Margin="0,10,0,0" Height="34" Content="Apply Adjustment" Command="{Binding Inventory.AdjustStockCommand}" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
+
+                    <TextBlock Grid.Row="2" Margin="0,10,0,0" Text="{Binding Inventory.StatusMessage}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="#065F46" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Inventory.IsError}" Value="True">
+                                        <Setter Property="Foreground" Value="#B91C1C" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Suppliers" Visibility="{Binding IsManagementTabsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                        <Button Width="92" Height="34" Content="Refresh" Command="{Binding Suppliers.RefreshCommand}" />
+                        <Button Width="104" Height="34" Margin="8,0,0,0" Content="New Supplier" Command="{Binding Suppliers.NewCommand}" />
+                        <Button Width="92" Height="34" Margin="8,0,0,0" Content="Save" Command="{Binding Suppliers.SaveCommand}" />
+                        <Button Width="110" Height="34" Margin="8,0,0,0" Content="Toggle Active" Command="{Binding Suppliers.ToggleStatusCommand}" />
+                    </StackPanel>
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.8*" />
+                            <ColumnDefinition Width="1.2*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Background="White" CornerRadius="10" Padding="10" Margin="0,0,10,0">
+                            <DataGrid ItemsSource="{Binding Suppliers.Suppliers}"
+                                      SelectedItem="{Binding Suppliers.SelectedSupplier, Mode=TwoWay}"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True"
+                                      CanUserAddRows="False"
+                                      CanUserDeleteRows="False"
+                                      EnableRowVirtualization="True"
+                                      EnableColumnVirtualization="True"
+                                      VirtualizingPanel.IsVirtualizing="True"
+                                      VirtualizingPanel.VirtualizationMode="Recycling"
+                                      ScrollViewer.CanContentScroll="True"
+                                      RowHeight="34"
+                                      FontSize="13">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="1.4*" />
+                                    <DataGridTextColumn Header="Contact" Binding="{Binding Contact}" Width="1*" />
+                                    <DataGridTextColumn Header="Phone" Binding="{Binding Phone}" Width="1*" />
+                                    <DataGridTextColumn Header="Email" Binding="{Binding Email}" Width="1.2*" />
+                                    <DataGridTextColumn Header="Products" Binding="{Binding ProductCount}" Width="0.7*" />
+                                    <DataGridCheckBoxColumn Header="Active" Binding="{Binding IsActive}" Width="0.6*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Border>
+
+                        <Border Grid.Column="1" Background="White" CornerRadius="10" Padding="12">
+                            <StackPanel>
+                                <TextBlock Text="Supplier Details" FontWeight="Bold" FontSize="15" Foreground="#0F172A" />
+
+                                <TextBlock Margin="0,10,0,0" Text="Name" Foreground="#334155" />
+                                <TextBox Margin="0,4,0,0" Height="32" Text="{Binding Suppliers.Name, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Margin="0,8,0,0" Text="Contact" Foreground="#334155" />
+                                <TextBox Margin="0,4,0,0" Height="32" Text="{Binding Suppliers.Contact, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Margin="0,8,0,0" Text="Address" Foreground="#334155" />
+                                <TextBox Margin="0,4,0,0" Height="70" TextWrapping="Wrap" AcceptsReturn="True" Text="{Binding Suppliers.Address, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Margin="0,8,0,0" Text="Phone" Foreground="#334155" />
+                                <TextBox Margin="0,4,0,0" Height="32" Text="{Binding Suppliers.Phone, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Margin="0,8,0,0" Text="Email" Foreground="#334155" />
+                                <TextBox Margin="0,4,0,0" Height="32" Text="{Binding Suppliers.Email, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <TextBlock Grid.Row="2" Margin="0,10,0,0" Text="{Binding Suppliers.StatusMessage}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="#065F46" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Suppliers.IsError}" Value="True">
+                                        <Setter Property="Foreground" Value="#B91C1C" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Customers" Visibility="{Binding IsManagementTabsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="2.1*" />
+                        <RowDefinition Height="1.4*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                        <Button Width="92" Height="34" Content="Refresh" Command="{Binding Customers.RefreshCommand}" />
+                        <Button Width="104" Height="34" Margin="8,0,0,0" Content="New Customer" Command="{Binding Customers.NewCommand}" />
+                        <Button Width="92" Height="34" Margin="8,0,0,0" Content="Save" Command="{Binding Customers.SaveCommand}" />
+                        <Button Width="110" Height="34" Margin="8,0,0,0" Content="Toggle Active" Command="{Binding Customers.ToggleStatusCommand}" />
+                    </StackPanel>
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.9*" />
+                            <ColumnDefinition Width="1.1*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Background="White" CornerRadius="10" Padding="10" Margin="0,0,10,0">
+                            <DataGrid ItemsSource="{Binding Customers.Customers}"
+                                      SelectedItem="{Binding Customers.SelectedCustomer, Mode=TwoWay}"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True"
+                                      CanUserAddRows="False"
+                                      CanUserDeleteRows="False"
+                                      EnableRowVirtualization="True"
+                                      EnableColumnVirtualization="True"
+                                      VirtualizingPanel.IsVirtualizing="True"
+                                      VirtualizingPanel.VirtualizationMode="Recycling"
+                                      ScrollViewer.CanContentScroll="True"
+                                      RowHeight="34"
+                                      FontSize="13">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="1.4*" />
+                                    <DataGridTextColumn Header="Phone" Binding="{Binding Phone}" Width="1*" />
+                                    <DataGridTextColumn Header="Email" Binding="{Binding Email}" Width="1.2*" />
+                                    <DataGridTextColumn Header="Points" Binding="{Binding LoyaltyPoints}" Width="0.7*" />
+                                    <DataGridTextColumn Header="Spend" Binding="{Binding CumulativeSpend, StringFormat={}{0:0.00}}" Width="0.9*" />
+                                    <DataGridTextColumn Header="Purchases" Binding="{Binding PurchaseCount}" Width="0.8*" />
+                                    <DataGridCheckBoxColumn Header="Active" Binding="{Binding IsActive}" Width="0.6*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Border>
+
+                        <Border Grid.Column="1" Background="White" CornerRadius="10" Padding="12">
+                            <StackPanel>
+                                <TextBlock Text="Customer Details" FontWeight="Bold" FontSize="15" Foreground="#0F172A" />
+
+                                <TextBlock Margin="0,10,0,0" Text="Name" Foreground="#334155" />
+                                <TextBox Margin="0,4,0,0" Height="32" Text="{Binding Customers.Name, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Margin="0,8,0,0" Text="Phone" Foreground="#334155" />
+                                <TextBox Margin="0,4,0,0" Height="32" Text="{Binding Customers.Phone, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Margin="0,8,0,0" Text="Email" Foreground="#334155" />
+                                <TextBox Margin="0,4,0,0" Height="32" Text="{Binding Customers.Email, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Margin="0,8,0,0" Text="Loyalty Points" Foreground="#334155" />
+                                <TextBox Margin="0,4,0,0" Height="32" Text="{Binding Customers.LoyaltyPointsInput, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <Border Margin="0,12,0,0" Padding="10" CornerRadius="8" Background="#EFF6FF">
+                                    <StackPanel>
+                                        <TextBlock FontWeight="SemiBold" Foreground="#1E3A8A" Text="Selected Customer Snapshot" />
+                                        <TextBlock Margin="0,4,0,0" Foreground="#1E3A8A" Text="{Binding Customers.SelectedCustomer.CumulativeSpend, StringFormat=Lifetime Spend: {0:0.00}}" />
+                                        <TextBlock Margin="0,2,0,0" Foreground="#1E3A8A" Text="{Binding Customers.SelectedCustomer.PurchaseCount, StringFormat=Purchase Count: {0}}" />
+                                        <TextBlock Margin="0,2,0,0" Foreground="#1E3A8A" Text="{Binding Customers.SelectedCustomer.LastPurchaseUtc, StringFormat=Last Purchase (UTC): {0:g}}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <Border Grid.Row="2" Margin="0,10,0,0" Background="White" CornerRadius="10" Padding="10">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Text="Purchase History (latest 200)" FontWeight="Bold" FontSize="14" Foreground="#0F172A" />
+                            <DataGrid Grid.Row="1"
+                                      Margin="0,8,0,0"
+                                      ItemsSource="{Binding Customers.PurchaseHistory}"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True"
+                                      CanUserAddRows="False"
+                                      CanUserDeleteRows="False"
+                                      EnableRowVirtualization="True"
+                                      EnableColumnVirtualization="True"
+                                      VirtualizingPanel.IsVirtualizing="True"
+                                      VirtualizingPanel.VirtualizationMode="Recycling"
+                                      ScrollViewer.CanContentScroll="True"
+                                      RowHeight="32"
+                                      FontSize="12.5">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Receipt" Binding="{Binding ReceiptNumber}" Width="1.1*" />
+                                    <DataGridTextColumn Header="UTC Time" Binding="{Binding CreatedUtc, StringFormat={}{0:g}}" Width="1.2*" />
+                                    <DataGridTextColumn Header="Total" Binding="{Binding Total, StringFormat={}{0:0.00}}" Width="0.8*" />
+                                    <DataGridTextColumn Header="Payment" Binding="{Binding PaymentMethod}" Width="0.9*" />
+                                    <DataGridTextColumn Header="Order Type" Binding="{Binding OrderType}" Width="0.9*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+
+                    <TextBlock Grid.Row="3" Margin="0,10,0,0" Text="{Binding Customers.StatusMessage}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="#065F46" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Customers.IsError}" Value="True">
+                                        <Setter Property="Foreground" Value="#B91C1C" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Reports" Visibility="{Binding IsManagementTabsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
+                        <TextBlock Margin="0,7,6,0" Text="Period" Foreground="#334155" FontWeight="SemiBold" />
+                        <ComboBox Width="140"
+                                  Height="34"
+                                  ItemsSource="{Binding Reporting.AvailablePeriods}"
+                                  SelectedItem="{Binding Reporting.SelectedPeriod}" />
+                        <Button Width="92" Height="34" Margin="8,0,0,0" Content="Refresh" Command="{Binding Reporting.RefreshCommand}" />
+                        <TextBlock Margin="16,7,0,0" Foreground="#475569" Text="{Binding Reporting.FromUtc, StringFormat=From UTC: {0:g}}" />
+                        <TextBlock Margin="12,7,0,0" Foreground="#475569" Text="{Binding Reporting.ToUtc, StringFormat=To UTC: {0:g}}" />
+                    </StackPanel>
+
+                    <Grid Grid.Row="1" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Background="#E0F2FE" CornerRadius="10" Padding="10" Margin="0,0,8,0">
+                            <StackPanel>
+                                <TextBlock Text="Total Sales" Foreground="#0C4A6E" FontWeight="SemiBold" />
+                                <TextBlock Margin="0,4,0,0" FontSize="24" FontWeight="Bold" Foreground="#0C4A6E" Text="{Binding Reporting.TotalSales, StringFormat={}{0:0.00}}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="1" Background="#DCFCE7" CornerRadius="10" Padding="10" Margin="0,0,8,0">
+                            <StackPanel>
+                                <TextBlock Text="Total Profit" Foreground="#14532D" FontWeight="SemiBold" />
+                                <TextBlock Margin="0,4,0,0" FontSize="24" FontWeight="Bold" Foreground="#14532D" Text="{Binding Reporting.TotalProfit, StringFormat={}{0:0.00}}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="2" Background="#FEF3C7" CornerRadius="10" Padding="10" Margin="0,0,8,0">
+                            <StackPanel>
+                                <TextBlock Text="Transactions" Foreground="#92400E" FontWeight="SemiBold" />
+                                <TextBlock Margin="0,4,0,0" FontSize="24" FontWeight="Bold" Foreground="#92400E" Text="{Binding Reporting.TransactionCount}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="3" Background="#F1F5F9" CornerRadius="10" Padding="10">
+                            <StackPanel>
+                                <TextBlock Text="Average Sale" Foreground="#0F172A" FontWeight="SemiBold" />
+                                <TextBlock Margin="0,4,0,0" FontSize="24" FontWeight="Bold" Foreground="#0F172A" Text="{Binding Reporting.AverageSale, StringFormat={}{0:0.00}}" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <Border Grid.Row="2" Background="White" CornerRadius="10" Padding="10">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Text="Top Products" FontWeight="Bold" FontSize="14" Foreground="#0F172A" />
+
+                            <DataGrid Grid.Row="1"
+                                      Margin="0,8,0,0"
+                                      ItemsSource="{Binding Reporting.TopProducts}"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True"
+                                      CanUserAddRows="False"
+                                      CanUserDeleteRows="False"
+                                      EnableRowVirtualization="True"
+                                      EnableColumnVirtualization="True"
+                                      VirtualizingPanel.IsVirtualizing="True"
+                                      VirtualizingPanel.VirtualizationMode="Recycling"
+                                      ScrollViewer.CanContentScroll="True"
+                                      RowHeight="32"
+                                      FontSize="12.5">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Product" Binding="{Binding ProductName}" Width="1.6*" />
+                                    <DataGridTextColumn Header="Qty Sold" Binding="{Binding QuantitySold}" Width="0.8*" />
+                                    <DataGridTextColumn Header="Revenue" Binding="{Binding Revenue, StringFormat={}{0:0.00}}" Width="1*" />
+                                    <DataGridTextColumn Header="Profit" Binding="{Binding Profit, StringFormat={}{0:0.00}}" Width="1*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+
+                    <TextBlock Grid.Row="3" Margin="0,10,0,0" Text="{Binding Reporting.StatusMessage}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="#065F46" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Reporting.IsError}" Value="True">
+                                        <Setter Property="Foreground" Value="#B91C1C" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Users" Visibility="{Binding IsManagementTabsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                        <Button Width="92" Height="34" Content="Refresh" Command="{Binding Users.RefreshCommand}" />
+                        <Button Width="110" Height="34" Margin="8,0,0,0" Content="Toggle Active" Command="{Binding Users.ToggleStatusCommand}" />
+                        <Button Width="120" Height="34" Margin="8,0,0,0" Content="Reset Password" Command="{Binding Users.ResetPasswordCommand}" />
+                    </StackPanel>
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.7*" />
+                            <ColumnDefinition Width="1.1*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Background="White" CornerRadius="10" Padding="10" Margin="0,0,10,0">
+                            <DataGrid ItemsSource="{Binding Users.Users}"
+                                      SelectedItem="{Binding Users.SelectedUser, Mode=TwoWay}"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True"
+                                      CanUserAddRows="False"
+                                      CanUserDeleteRows="False"
+                                      EnableRowVirtualization="True"
+                                      EnableColumnVirtualization="True"
+                                      VirtualizingPanel.IsVirtualizing="True"
+                                      VirtualizingPanel.VirtualizationMode="Recycling"
+                                      ScrollViewer.CanContentScroll="True"
+                                      RowHeight="34"
+                                      FontSize="13">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Username" Binding="{Binding Username}" Width="1*" />
+                                    <DataGridTextColumn Header="Full Name" Binding="{Binding FullName}" Width="1.2*" />
+                                    <DataGridTextColumn Header="Role" Binding="{Binding Role}" Width="0.7*" />
+                                    <DataGridTextColumn Header="Email" Binding="{Binding Email}" Width="1.2*" />
+                                    <DataGridCheckBoxColumn Header="Active" Binding="{Binding IsActive}" Width="0.6*" />
+                                    <DataGridTextColumn Header="Last Login UTC" Binding="{Binding LastLoginUtc, StringFormat={}{0:g}}" Width="1*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Border>
+
+                        <Border Grid.Column="1" Background="White" CornerRadius="10" Padding="12">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <TextBlock Text="Create Cashier" FontWeight="Bold" FontSize="15" Foreground="#0F172A" />
+
+                                    <TextBlock Margin="0,10,0,0" Text="Username" Foreground="#334155" />
+                                    <TextBox Margin="0,4,0,0" Height="32" Text="{Binding Users.NewUsername, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <TextBlock Margin="0,8,0,0" Text="Full Name" Foreground="#334155" />
+                                    <TextBox Margin="0,4,0,0" Height="32" Text="{Binding Users.NewFullName, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <TextBlock Margin="0,8,0,0" Text="Email" Foreground="#334155" />
+                                    <TextBox Margin="0,4,0,0" Height="32" Text="{Binding Users.NewEmail, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <TextBlock Margin="0,8,0,0" Text="Password" Foreground="#334155" />
+                                    <TextBox Margin="0,4,0,0" Height="32" Text="{Binding Users.NewPassword, UpdateSourceTrigger=PropertyChanged}" />
+
+                                    <Button Margin="0,10,0,0" Height="34" Content="Create Cashier" Command="{Binding Users.CreateCashierCommand}" />
+
+                                    <Separator Margin="0,14,0,12" />
+
+                                    <TextBlock Text="Selected User Actions" FontWeight="Bold" Foreground="#0F172A" />
+                                    <TextBlock Margin="0,6,0,0" Foreground="#334155" Text="{Binding Users.SelectedUser.Username, StringFormat=User: {0}}" />
+                                    <TextBlock Margin="0,2,0,0" Foreground="#334155" Text="{Binding Users.SelectedUser.Role, StringFormat=Role: {0}}" />
+
+                                    <TextBlock Margin="0,8,0,0" Text="New Password" Foreground="#334155" />
+                                    <TextBox Margin="0,4,0,0" Height="32" Text="{Binding Users.ResetPasswordInput, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
+
+                    <TextBlock Grid.Row="2" Margin="0,10,0,0" Text="{Binding Users.StatusMessage}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="#065F46" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Users.IsError}" Value="True">
+                                        <Setter Property="Foreground" Value="#B91C1C" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Backup/Restore" Visibility="{Binding IsManagementTabsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
+                        <Button Width="92" Height="34" Content="Refresh" Command="{Binding BackupRestore.RefreshCommand}" />
+                        <Button Width="120" Height="34" Margin="8,0,0,0" Content="Create Backup" Command="{Binding BackupRestore.CreateBackupCommand}" />
+                        <Button Width="120" Height="34" Margin="8,0,0,0" Content="Restore Backup" Command="{Binding BackupRestore.RestoreCommand}" />
+                        <CheckBox Margin="16,7,0,0" Content="I confirm restore will replace current database" IsChecked="{Binding BackupRestore.ConfirmRestore}" />
+                    </StackPanel>
+
+                    <Border Grid.Row="1" Background="White" CornerRadius="10" Padding="10">
+                        <DataGrid ItemsSource="{Binding BackupRestore.Backups}"
+                                  SelectedItem="{Binding BackupRestore.SelectedBackup, Mode=TwoWay}"
+                                  AutoGenerateColumns="False"
+                                  IsReadOnly="True"
+                                  CanUserAddRows="False"
+                                  CanUserDeleteRows="False"
+                                  EnableRowVirtualization="True"
+                                  EnableColumnVirtualization="True"
+                                  VirtualizingPanel.IsVirtualizing="True"
+                                  VirtualizingPanel.VirtualizationMode="Recycling"
+                                  ScrollViewer.CanContentScroll="True"
+                                  RowHeight="34"
+                                  FontSize="13">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Created UTC" Binding="{Binding CreatedUtc, StringFormat={}{0:g}}" Width="1.1*" />
+                                <DataGridTextColumn Header="File Path" Binding="{Binding FilePath}" Width="2.6*" />
+                                <DataGridCheckBoxColumn Header="Automatic" Binding="{Binding IsAutomatic}" Width="0.8*" />
+                                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="0.9*" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Border>
+
+                    <TextBlock Grid.Row="2" Margin="0,10,0,0" Foreground="#334155" Text="{Binding BackupRestore.SelectedBackup.FilePath, StringFormat=Selected: {0}}" />
+
+                    <TextBlock Grid.Row="3" Margin="0,6,0,0" Text="{Binding BackupRestore.StatusMessage}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="#065F46" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding BackupRestore.IsError}" Value="True">
+                                        <Setter Property="Foreground" Value="#B91C1C" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</Window>

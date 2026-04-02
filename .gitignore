@@ -1,0 +1,44 @@
+# Build artifacts
+**/bin/
+**/obj/
+
+# User-specific / IDE
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider / ReSharper
+.idea/
+*.DotSettings.user
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Coverage / test output
+TestResults/
+coverage/
+coverage.*
+*.trx
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local database and backups
+*.db
+*.db-shm
+*.db-wal
+backups/
+spool/
+
+# Publish output
+publish/
+out/
