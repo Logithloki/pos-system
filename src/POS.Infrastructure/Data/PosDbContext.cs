@@ -184,13 +184,31 @@ public sealed class PosDbContext : DbContext
     public override int SaveChanges()
     {
         ApplyEntityPolicies();
-        return base.SaveChanges();
+
+        try
+        {
+            return base.SaveChanges();
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            ResetConcurrencyEntries(ex);
+            throw;
+        }
     }
 
-    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         ApplyEntityPolicies();
-        return base.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            return await base.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            await ResetConcurrencyEntriesAsync(ex, cancellationToken);
+            throw;
+        }
     }
 
     private void ApplyEntityPolicies()
@@ -228,6 +246,50 @@ public sealed class PosDbContext : DbContext
             {
                 entry.Entity.Version += 1;
             }
+        }
+    }
+
+    private static void ResetConcurrencyEntries(DbUpdateConcurrencyException exception)
+    {
+        foreach (var entry in exception.Entries)
+        {
+            if (entry.Entity is not IConcurrencyTracked)
+            {
+                continue;
+            }
+
+            var databaseValues = entry.GetDatabaseValues();
+            if (databaseValues is null)
+            {
+                entry.State = EntityState.Detached;
+                continue;
+            }
+
+            entry.CurrentValues.SetValues(databaseValues);
+            entry.OriginalValues.SetValues(databaseValues);
+            entry.State = EntityState.Unchanged;
+        }
+    }
+
+    private static async Task ResetConcurrencyEntriesAsync(DbUpdateConcurrencyException exception, CancellationToken cancellationToken)
+    {
+        foreach (var entry in exception.Entries)
+        {
+            if (entry.Entity is not IConcurrencyTracked)
+            {
+                continue;
+            }
+
+            var databaseValues = await entry.GetDatabaseValuesAsync(cancellationToken);
+            if (databaseValues is null)
+            {
+                entry.State = EntityState.Detached;
+                continue;
+            }
+
+            entry.CurrentValues.SetValues(databaseValues);
+            entry.OriginalValues.SetValues(databaseValues);
+            entry.State = EntityState.Unchanged;
         }
     }
 }

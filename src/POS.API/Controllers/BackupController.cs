@@ -19,9 +19,12 @@ public sealed class BackupController : ControllerBase
 
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyCollection<BackupResult>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<IReadOnlyCollection<BackupResult>>> ListBackups(CancellationToken cancellationToken)
+    public async Task<ActionResult<IReadOnlyCollection<BackupResult>>> ListBackups(
+        [FromQuery] int skip = 0,
+        [FromQuery] int take = 100,
+        CancellationToken cancellationToken = default)
     {
-        var backups = await _backupRestoreService.ListBackupsAsync(cancellationToken);
+        var backups = await _backupRestoreService.ListBackupsAsync(skip, take, cancellationToken);
         return Ok(backups);
     }
 

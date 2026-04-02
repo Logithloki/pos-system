@@ -168,28 +168,36 @@ public sealed class CheckoutService : ICheckoutService
 
             await transaction.CommitAsync(cancellationToken);
 
-            await _auditLogService.WriteAsync(
-                new AuditLogEntry
-                {
-                    UserId = user.Id,
-                    Action = "CheckoutComplete",
-                    ResourceType = "SalesOrder",
-                    ResourceId = order.Id.ToString(),
-                    Status = "Success",
-                    MetadataJson = JsonSerializer.Serialize(
-                        new
-                        {
-                            receiptNumber = order.ReceiptNumber,
-                            idempotencyKey = order.IdempotencyKey,
-                        }),
-                },
-                cancellationToken);
+            try
+            {
+                await _auditLogService.WriteAsync(
+                    new AuditLogEntry
+                    {
+                        UserId = user.Id,
+                        Action = "CheckoutComplete",
+                        ResourceType = "SalesOrder",
+                        ResourceId = order.Id.ToString(),
+                        Status = "Success",
+                        MetadataJson = JsonSerializer.Serialize(
+                            new
+                            {
+                                receiptNumber = order.ReceiptNumber,
+                                idempotencyKey = order.IdempotencyKey,
+                            }),
+                    },
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Audit log write failed for SalesOrder {SalesOrderId}. Audit trail may be incomplete.", order.Id);
+            }
 
             return BuildResponse(order, false);
         }
         catch (DbUpdateConcurrencyException ex)
         {
             await transaction.RollbackAsync(cancellationToken);
+            _dbContext.ChangeTracker.Clear();
             _logger.LogWarning(ex, "Checkout failed due to a concurrency conflict for idempotency key {IdempotencyKey}.", request.IdempotencyKey);
             throw new AppValidationException("A concurrent operation changed inventory during checkout. Please retry.");
         }
@@ -226,6 +234,11 @@ public sealed class CheckoutService : ICheckoutService
         if (string.IsNullOrWhiteSpace(request.IdempotencyKey))
         {
             throw new AppValidationException("Idempotency key is required.");
+        }
+
+        if (request.IdempotencyKey.Trim().Length > 120)
+        {
+            throw new AppValidationException("Idempotency key must not exceed 120 characters.");
         }
 
         if (request.Items.Count == 0)

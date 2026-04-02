@@ -165,22 +165,29 @@ public sealed class RefundService : IRefundService
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 
-            await _auditLogService.WriteAsync(
-                new AuditLogEntry
-                {
-                    UserId = requestedBy.Id,
-                    Action = "RefundReversalCreated",
-                    ResourceType = "SalesOrder",
-                    ResourceId = reversal.Id.ToString(),
-                    Status = "Success",
-                    MetadataJson = JsonSerializer.Serialize(
-                        new
-                        {
-                            originalSalesOrderId = originalOrder.Id,
-                            reason = request.Reason,
-                        }),
-                },
-                cancellationToken);
+            try
+            {
+                await _auditLogService.WriteAsync(
+                    new AuditLogEntry
+                    {
+                        UserId = requestedBy.Id,
+                        Action = "RefundReversalCreated",
+                        ResourceType = "SalesOrder",
+                        ResourceId = reversal.Id.ToString(),
+                        Status = "Success",
+                        MetadataJson = JsonSerializer.Serialize(
+                            new
+                            {
+                                originalSalesOrderId = originalOrder.Id,
+                                reason = request.Reason,
+                            }),
+                    },
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Audit log write failed for refund SalesOrder {SalesOrderId}. Audit trail may be incomplete.", reversal.Id);
+            }
 
             return new RefundResponse
             {
@@ -192,6 +199,7 @@ public sealed class RefundService : IRefundService
         catch (DbUpdateConcurrencyException ex)
         {
             await transaction.RollbackAsync(cancellationToken);
+            _dbContext.ChangeTracker.Clear();
             _logger.LogWarning(ex, "Refund reversal failed due to concurrency conflict for sales order {SalesOrderId}.", request.SalesOrderId);
             throw new AppValidationException("A concurrent stock update prevented refund completion. Please retry.");
         }

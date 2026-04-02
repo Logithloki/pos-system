@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 using POS.Application.Abstractions;
 using POS.Application.Models;
 
@@ -9,7 +8,7 @@ namespace POS.API.Controllers;
 [ApiController]
 [Authorize(Policy = "AdminOnly")]
 [Route("api/refunds")]
-public sealed class RefundController : ControllerBase
+public sealed class RefundController : PosControllerBase
 {
     private readonly IRefundService _refundService;
 
@@ -33,16 +32,5 @@ public sealed class RefundController : ControllerBase
 
         var response = await _refundService.CreateRefundAsync(normalizedRequest, cancellationToken);
         return Ok(response);
-    }
-
-    private long GetAuthenticatedUserId()
-    {
-        var rawClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!long.TryParse(rawClaim, out var userId) || userId <= 0)
-        {
-            throw new UnauthorizedAccessException("Access denied.");
-        }
-
-        return userId;
     }
 }

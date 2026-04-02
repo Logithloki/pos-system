@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 using POS.Application.Abstractions;
 using POS.Application.Models;
 
@@ -9,7 +8,7 @@ namespace POS.API.Controllers;
 [ApiController]
 [Authorize(Policy = "CashierOrAdmin")]
 [Route("api/checkout")]
-public sealed class CheckoutController : ControllerBase
+public sealed class CheckoutController : PosControllerBase
 {
     private readonly ICheckoutService _checkoutService;
 
@@ -39,16 +38,5 @@ public sealed class CheckoutController : ControllerBase
 
         var response = await _checkoutService.ProcessCheckoutAsync(normalizedRequest, cancellationToken);
         return Ok(response);
-    }
-
-    private long GetAuthenticatedUserId()
-    {
-        var rawClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!long.TryParse(rawClaim, out var userId) || userId <= 0)
-        {
-            throw new UnauthorizedAccessException("Access denied.");
-        }
-
-        return userId;
     }
 }

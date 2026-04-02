@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
@@ -20,6 +21,27 @@ builder.Services.AddRateLimiter(
     options =>
     {
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+        options.OnRejected = async (context, cancellationToken) =>
+        {
+            var httpContext = context.HttpContext;
+            var correlationId = httpContext.Items.TryGetValue(CorrelationIdMiddleware.ContextKey, out var value)
+                ? value?.ToString()
+                : null;
+
+            httpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+            httpContext.Response.ContentType = "application/json";
+
+            var payload = new
+            {
+                error = "TooManyRequests",
+                message = "Rate limit exceeded. Please try again later.",
+                correlationId,
+                traceId = httpContext.TraceIdentifier,
+            };
+
+            await httpContext.Response.WriteAsync(JsonSerializer.Serialize(payload), cancellationToken);
+        };
+
         options.AddFixedWindowLimiter(
             "login",
             limiterOptions =>

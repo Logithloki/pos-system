@@ -8,5 +8,5 @@ public interface IBackupRestoreService
 
     Task<RestoreResult> RestoreBackupAsync(RestoreRequest request, CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyCollection<BackupResult>> ListBackupsAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyCollection<BackupResult>> ListBackupsAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default);
 }

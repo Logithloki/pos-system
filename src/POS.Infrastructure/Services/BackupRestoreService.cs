@@ -15,6 +15,9 @@ namespace POS.Infrastructure.Services;
 
 public sealed class BackupRestoreService : IBackupRestoreService
 {
+    private const int MaxListedBackups = 200;
+    private const string RequiredSchemaTable = "SalesOrders";
+
     private readonly PosDbContext _dbContext;
     private readonly IOptions<BackupOptions> _backupOptions;
     private readonly ISystemClock _clock;
@@ -117,6 +120,8 @@ public sealed class BackupRestoreService : IBackupRestoreService
             throw new AppValidationException($"Backup file not found: {backupFilePath}");
         }
 
+        await ValidateBackupFileAsync(backupFilePath, cancellationToken);
+
         string? safetyBackupPath = null;
         if (request.CreateSafetyBackupBeforeRestore)
         {
@@ -166,8 +171,19 @@ public sealed class BackupRestoreService : IBackupRestoreService
         };
     }
 
-    public Task<IReadOnlyCollection<BackupResult>> ListBackupsAsync(CancellationToken cancellationToken = default)
+    public Task<IReadOnlyCollection<BackupResult>> ListBackupsAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default)
     {
+        if (skip < 0)
+        {
+            throw new AppValidationException("Skip must be zero or greater.");
+        }
+
+        if (take <= 0)
+        {
+            throw new AppValidationException("Take must be greater than zero.");
+        }
+
+        var normalizedTake = Math.Min(take, MaxListedBackups);
         var resolved = ResolveOptions();
 
         if (!Directory.Exists(resolved.BackupDirectory))
@@ -177,11 +193,13 @@ public sealed class BackupRestoreService : IBackupRestoreService
 
         var files = Directory.GetFiles(resolved.BackupDirectory, "*.db", SearchOption.TopDirectoryOnly)
             .OrderByDescending(path => path)
+            .Skip(skip)
+            .Take(normalizedTake)
             .Select(
                 path => new BackupResult
                 {
                     FilePath = path,
-                    ChecksumSha256 = string.Empty,
+                    ChecksumSha256 = TryComputeFileChecksum(path),
                     CreatedUtc = File.GetCreationTimeUtc(path),
                     IsAutomatic = path.Contains("_auto", StringComparison.OrdinalIgnoreCase),
                 })
@@ -251,6 +269,62 @@ public sealed class BackupRestoreService : IBackupRestoreService
         using var stream = File.OpenRead(filePath);
         var hash = SHA256.HashData(stream);
         return Convert.ToHexString(hash);
+    }
+
+    private string TryComputeFileChecksum(string filePath)
+    {
+        try
+        {
+            return ComputeFileChecksum(filePath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Unable to compute checksum for backup file {BackupFilePath}.", filePath);
+            return string.Empty;
+        }
+    }
+
+    private static async Task ValidateBackupFileAsync(string backupFilePath, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var connectionString = new SqliteConnectionStringBuilder
+            {
+                DataSource = backupFilePath,
+                Mode = SqliteOpenMode.ReadOnly,
+            }.ToString();
+
+            await using var connection = new SqliteConnection(connectionString);
+            await connection.OpenAsync(cancellationToken);
+
+            await using (var integrityCommand = connection.CreateCommand())
+            {
+                integrityCommand.CommandText = "PRAGMA integrity_check;";
+                var integrityResult = await integrityCommand.ExecuteScalarAsync(cancellationToken);
+                if (!string.Equals(integrityResult?.ToString(), "ok", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new AppValidationException("Backup file failed SQLite integrity check.");
+                }
+            }
+
+            await using var schemaCommand = connection.CreateCommand();
+            schemaCommand.CommandText = "SELECT name FROM sqlite_master WHERE type = 'table' AND name = $tableName LIMIT 1;";
+            schemaCommand.Parameters.AddWithValue("$tableName", RequiredSchemaTable);
+
+            var schemaResult = await schemaCommand.ExecuteScalarAsync(cancellationToken);
+            if (schemaResult is null)
+            {
+                throw new AppValidationException("Backup file schema is not compatible with this POS database.");
+            }
+        }
+        catch (AppValidationException)
+        {
+            throw;
+        }
+        catch
+        {
+            throw new AppValidationException("Backup file is invalid or unreadable.");
+        }
     }
 
     private sealed record ResolvedBackupOptions(string DatabaseFilePath, string BackupDirectory, int RetentionDays);
