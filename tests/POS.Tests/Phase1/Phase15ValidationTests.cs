@@ -503,6 +503,542 @@ public sealed class Phase15ValidationTests
         }
     }
 
+    [Fact]
+    public async Task StressTests_CheckoutService_Should_Handle_100_Rapid_Transactions()
+    {
+        var databasePath = BuildTempPath("stress-100-transactions", "pos.db");
+
+        try
+        {
+            await using var setupContext = await CreateSqliteContextAsync(databasePath);
+
+            var cashier = new User
+            {
+                Username = "cashier-stress-100",
+                PasswordHash = "hash",
+                FullName = "Cashier",
+                Role = UserRole.Cashier,
+                IsActive = true,
+            };
+
+            var product = new Product
+            {
+                Name = "Stress Product",
+                Barcode = "7000000000001",
+                Price = 10m,
+                Cost = 4m,
+                QuantityOnHand = 300,
+                ReorderLevel = 5,
+                IsActive = true,
+            };
+
+            setupContext.Users.Add(cashier);
+            setupContext.Products.Add(product);
+            await setupContext.SaveChangesAsync();
+
+            const int transactionCount = 100;
+
+            for (var i = 0; i < transactionCount; i += 1)
+            {
+                await using var operationContext = await CreateSqliteContextAsync(databasePath);
+                var service = BuildCheckoutService(operationContext, new NoOpCheckoutExecutionHook());
+
+                var response = await service.ProcessCheckoutAsync(
+                    new CheckoutRequest
+                    {
+                        UserId = cashier.Id,
+                        IdempotencyKey = $"stress-100-{i}-{Guid.NewGuid():N}",
+                        TaxRatePercent = 5m,
+                        PaymentMethod = PaymentMethod.Cash,
+                        AmountTendered = 50m,
+                        Items =
+                        [
+                            new CheckoutItemRequest
+                            {
+                                ProductId = product.Id,
+                                Quantity = 1,
+                            },
+                        ],
+                    });
+
+                Assert.False(response.IsIdempotentReplay);
+            }
+
+            await using var verificationContext = await CreateSqliteContextAsync(databasePath);
+            var orderCount = await verificationContext.SalesOrders.CountAsync();
+            Assert.Equal(transactionCount, orderCount);
+
+            var updatedProduct = await verificationContext.Products.SingleAsync(x => x.Id == product.Id);
+            Assert.Equal(200, updatedProduct.QuantityOnHand);
+        }
+        finally
+        {
+            CleanupPath(databasePath);
+        }
+    }
+
+    [Fact]
+    public async Task StressTests_CheckoutService_Should_Handle_Large_Cart_Of_100_Items()
+    {
+        var databasePath = BuildTempPath("stress-large-cart", "pos.db");
+
+        try
+        {
+            await using var context = await CreateSqliteContextAsync(databasePath);
+
+            var cashier = new User
+            {
+                Username = "cashier-large-cart",
+                PasswordHash = "hash",
+                FullName = "Cashier",
+                Role = UserRole.Cashier,
+                IsActive = true,
+            };
+
+            context.Users.Add(cashier);
+
+            var products = Enumerable.Range(1, 100)
+                .Select(
+                    i => new Product
+                    {
+                        Name = $"CartProduct-{i}",
+                        Barcode = $"7100000{i:000000}",
+                        Price = 5m + (i % 10),
+                        Cost = 2m + (i % 5),
+                        QuantityOnHand = 25,
+                        ReorderLevel = 5,
+                        IsActive = true,
+                    })
+                .ToArray();
+
+            context.Products.AddRange(products);
+            await context.SaveChangesAsync();
+
+            var service = BuildCheckoutService(context, new NoOpCheckoutExecutionHook());
+            var response = await service.ProcessCheckoutAsync(
+                new CheckoutRequest
+                {
+                    UserId = cashier.Id,
+                    IdempotencyKey = $"large-cart-{Guid.NewGuid():N}",
+                    TaxRatePercent = 5m,
+                    PaymentMethod = PaymentMethod.Cash,
+                    AmountTendered = 5000m,
+                    Items = products
+                        .Select(
+                            x => new CheckoutItemRequest
+                            {
+                                ProductId = x.Id,
+                                Quantity = 1,
+                            })
+                        .ToArray(),
+                });
+
+            Assert.False(response.IsIdempotentReplay);
+
+            var persistedLineCount = await context.SalesOrderLines.CountAsync(x => x.SalesOrderId == response.SalesOrderId);
+            Assert.Equal(100, persistedLineCount);
+        }
+        finally
+        {
+            CleanupPath(databasePath);
+        }
+    }
+
+    [Fact]
+    public async Task StressTests_CheckoutService_Should_Handle_Concurrent_Stock_Updates()
+    {
+        var databasePath = BuildTempPath("stress-concurrent-stock", "pos.db");
+
+        try
+        {
+            await using var setupContext = await CreateSqliteContextAsync(databasePath);
+
+            var cashier = new User
+            {
+                Username = "cashier-concurrency",
+                PasswordHash = "hash",
+                FullName = "Cashier",
+                Role = UserRole.Cashier,
+                IsActive = true,
+            };
+
+            var product = new Product
+            {
+                Name = "Concurrent Product",
+                Barcode = "7200000000001",
+                Price = 30m,
+                Cost = 12m,
+                QuantityOnHand = 1,
+                ReorderLevel = 1,
+                IsActive = true,
+            };
+
+            setupContext.Users.Add(cashier);
+            setupContext.Products.Add(product);
+            await setupContext.SaveChangesAsync();
+
+            var startGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            Task<Exception?> attemptCheckout(string key)
+            {
+                return Task.Run(
+                    async () =>
+                    {
+                        await using var operationContext = await CreateSqliteContextAsync(databasePath);
+                        var service = BuildCheckoutService(operationContext, new NoOpCheckoutExecutionHook());
+
+                        await startGate.Task;
+
+                        try
+                        {
+                            await service.ProcessCheckoutAsync(
+                                new CheckoutRequest
+                                {
+                                    UserId = cashier.Id,
+                                    IdempotencyKey = key,
+                                    TaxRatePercent = 0m,
+                                    PaymentMethod = PaymentMethod.Cash,
+                                    AmountTendered = 100m,
+                                    Items =
+                                    [
+                                        new CheckoutItemRequest
+                                        {
+                                            ProductId = product.Id,
+                                            Quantity = 1,
+                                        },
+                                    ],
+                                });
+
+                            return null;
+                        }
+                        catch (Exception ex)
+                        {
+                            return ex;
+                        }
+                    });
+            }
+
+            var firstAttempt = attemptCheckout($"concurrent-1-{Guid.NewGuid():N}");
+            var secondAttempt = attemptCheckout($"concurrent-2-{Guid.NewGuid():N}");
+
+            startGate.SetResult(true);
+
+            var results = await Task.WhenAll(firstAttempt, secondAttempt);
+
+            Assert.Equal(1, results.Count(x => x is null));
+            Assert.Equal(1, results.Count(x => x is not null));
+            Assert.Contains(results, x => x is AppValidationException or DbUpdateException);
+
+            await using var verificationContext = await CreateSqliteContextAsync(databasePath);
+            var orderCount = await verificationContext.SalesOrders.CountAsync();
+            Assert.Equal(1, orderCount);
+
+            var updatedProduct = await verificationContext.Products.SingleAsync(x => x.Id == product.Id);
+            Assert.Equal(0, updatedProduct.QuantityOnHand);
+        }
+        finally
+        {
+            CleanupPath(databasePath);
+        }
+    }
+
+    [Fact]
+    public async Task FailureTests_CheckoutService_Should_Fail_When_Database_Is_Locked()
+    {
+        var databasePath = BuildTempPath("failure-db-locked", "pos.db");
+
+        try
+        {
+            await using var setupContext = await CreateSqliteContextAsync(databasePath);
+
+            var cashier = new User
+            {
+                Username = "cashier-db-locked",
+                PasswordHash = "hash",
+                FullName = "Cashier",
+                Role = UserRole.Cashier,
+                IsActive = true,
+            };
+
+            var product = new Product
+            {
+                Name = "Locked Product",
+                Barcode = "7300000000001",
+                Price = 25m,
+                Cost = 10m,
+                QuantityOnHand = 10,
+                ReorderLevel = 2,
+                IsActive = true,
+            };
+
+            setupContext.Users.Add(cashier);
+            setupContext.Products.Add(product);
+            await setupContext.SaveChangesAsync();
+
+            await using var lockConnection = new SqliteConnection($"Data Source={databasePath};Mode=ReadWrite;Cache=Shared;Default Timeout=1");
+            await lockConnection.OpenAsync();
+
+            await using var lockCommand = lockConnection.CreateCommand();
+            lockCommand.CommandText = "BEGIN EXCLUSIVE;";
+            await lockCommand.ExecuteNonQueryAsync();
+
+            try
+            {
+                var options = new DbContextOptionsBuilder<PosDbContext>()
+                    .UseSqlite($"Data Source={databasePath};Default Timeout=1")
+                    .EnableSensitiveDataLogging()
+                    .Options;
+
+                await using var operationContext = new PosDbContext(options);
+                var service = BuildCheckoutService(operationContext, new NoOpCheckoutExecutionHook());
+
+                var exception = await Record.ExceptionAsync(
+                    () => service.ProcessCheckoutAsync(
+                        new CheckoutRequest
+                        {
+                            UserId = cashier.Id,
+                            IdempotencyKey = $"db-lock-{Guid.NewGuid():N}",
+                            TaxRatePercent = 5m,
+                            PaymentMethod = PaymentMethod.Cash,
+                            AmountTendered = 100m,
+                            Items =
+                            [
+                                new CheckoutItemRequest
+                                {
+                                    ProductId = product.Id,
+                                    Quantity = 1,
+                                },
+                            ],
+                        }));
+
+                Assert.NotNull(exception);
+            }
+            finally
+            {
+                await using var unlockCommand = lockConnection.CreateCommand();
+                unlockCommand.CommandText = "ROLLBACK;";
+                await unlockCommand.ExecuteNonQueryAsync();
+            }
+
+            await using var verificationContext = await CreateSqliteContextAsync(databasePath);
+            var orderCount = await verificationContext.SalesOrders.CountAsync();
+            Assert.Equal(0, orderCount);
+        }
+        finally
+        {
+            CleanupPath(databasePath);
+        }
+    }
+
+    [Fact]
+    public async Task SecurityTests_Cashier_Trying_Admin_Refund_Api_Should_Be_Rejected()
+    {
+        var databasePath = BuildTempPath("security-cashier-refund", "pos.db");
+
+        try
+        {
+            await using var context = await CreateSqliteContextAsync(databasePath);
+
+            var cashier = new User
+            {
+                Username = "cashier-no-refund",
+                PasswordHash = "hash",
+                FullName = "Cashier",
+                Role = UserRole.Cashier,
+                IsActive = true,
+            };
+
+            context.Users.Add(cashier);
+            await context.SaveChangesAsync();
+
+            var refundService = BuildRefundService(context);
+
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(
+                () => refundService.CreateRefundAsync(
+                    new RefundRequest
+                    {
+                        SalesOrderId = 1,
+                        RequestedByUserId = cashier.Id,
+                        Reason = "Unauthorized test",
+                    }));
+        }
+        finally
+        {
+            CleanupPath(databasePath);
+        }
+    }
+
+    [Fact]
+    public async Task SecurityTests_Direct_Service_Calls_Should_Block_Idempotency_Key_Reuse_Across_Users()
+    {
+        var databasePath = BuildTempPath("security-idempotency-reuse", "pos.db");
+
+        try
+        {
+            await using var setupContext = await CreateSqliteContextAsync(databasePath);
+
+            var firstCashier = new User
+            {
+                Username = "cashier-a",
+                PasswordHash = "hash",
+                FullName = "Cashier A",
+                Role = UserRole.Cashier,
+                IsActive = true,
+            };
+
+            var secondCashier = new User
+            {
+                Username = "cashier-b",
+                PasswordHash = "hash",
+                FullName = "Cashier B",
+                Role = UserRole.Cashier,
+                IsActive = true,
+            };
+
+            var product = new Product
+            {
+                Name = "Shared Key Product",
+                Barcode = "7400000000001",
+                Price = 12m,
+                Cost = 5m,
+                QuantityOnHand = 20,
+                ReorderLevel = 2,
+                IsActive = true,
+            };
+
+            setupContext.Users.AddRange(firstCashier, secondCashier);
+            setupContext.Products.Add(product);
+            await setupContext.SaveChangesAsync();
+
+            var sharedKey = $"shared-key-{Guid.NewGuid():N}";
+
+            var firstService = BuildCheckoutService(setupContext, new NoOpCheckoutExecutionHook());
+            await firstService.ProcessCheckoutAsync(
+                new CheckoutRequest
+                {
+                    UserId = firstCashier.Id,
+                    IdempotencyKey = sharedKey,
+                    TaxRatePercent = 0m,
+                    PaymentMethod = PaymentMethod.Cash,
+                    AmountTendered = 50m,
+                    Items =
+                    [
+                        new CheckoutItemRequest
+                        {
+                            ProductId = product.Id,
+                            Quantity = 1,
+                        },
+                    ],
+                });
+
+            await using var secondContext = await CreateSqliteContextAsync(databasePath);
+            var secondService = BuildCheckoutService(secondContext, new NoOpCheckoutExecutionHook());
+
+            await Assert.ThrowsAsync<AppValidationException>(
+                () => secondService.ProcessCheckoutAsync(
+                    new CheckoutRequest
+                    {
+                        UserId = secondCashier.Id,
+                        IdempotencyKey = sharedKey,
+                        TaxRatePercent = 0m,
+                        PaymentMethod = PaymentMethod.Cash,
+                        AmountTendered = 50m,
+                        Items =
+                        [
+                            new CheckoutItemRequest
+                            {
+                                ProductId = product.Id,
+                                Quantity = 1,
+                            },
+                        ],
+                    }));
+        }
+        finally
+        {
+            CleanupPath(databasePath);
+        }
+    }
+
+    [Fact]
+    public async Task SecurityTests_Invalid_Inputs_Should_Be_Rejected_By_Service_Validation()
+    {
+        var databasePath = BuildTempPath("security-invalid-inputs", "pos.db");
+
+        try
+        {
+            await using var context = await CreateSqliteContextAsync(databasePath);
+
+            var admin = new User
+            {
+                Username = "admin-security",
+                PasswordHash = "hash",
+                FullName = "Admin",
+                Role = UserRole.Admin,
+                IsActive = true,
+            };
+
+            var cashier = new User
+            {
+                Username = "cashier-security",
+                PasswordHash = "hash",
+                FullName = "Cashier",
+                Role = UserRole.Cashier,
+                IsActive = true,
+            };
+
+            var product = new Product
+            {
+                Name = "Validation Product",
+                Barcode = "7500000000001",
+                Price = 8m,
+                Cost = 3m,
+                QuantityOnHand = 10,
+                ReorderLevel = 2,
+                IsActive = true,
+            };
+
+            context.Users.AddRange(admin, cashier);
+            context.Products.Add(product);
+            await context.SaveChangesAsync();
+
+            var checkoutService = BuildCheckoutService(context, new NoOpCheckoutExecutionHook());
+
+            await Assert.ThrowsAsync<AppValidationException>(
+                () => checkoutService.ProcessCheckoutAsync(
+                    new CheckoutRequest
+                    {
+                        UserId = cashier.Id,
+                        IdempotencyKey = new string('x', 121),
+                        TaxRatePercent = 5m,
+                        PaymentMethod = PaymentMethod.Cash,
+                        AmountTendered = 50m,
+                        Items =
+                        [
+                            new CheckoutItemRequest
+                            {
+                                ProductId = product.Id,
+                                Quantity = 1,
+                            },
+                        ],
+                    }));
+
+            var refundService = BuildRefundService(context);
+
+            await Assert.ThrowsAsync<AppValidationException>(
+                () => refundService.CreateRefundAsync(
+                    new RefundRequest
+                    {
+                        SalesOrderId = 0,
+                        RequestedByUserId = admin.Id,
+                        Reason = "Invalid request",
+                    }));
+        }
+        finally
+        {
+            CleanupPath(databasePath);
+        }
+    }
+
     private static CheckoutService BuildCheckoutService(PosDbContext context, ICheckoutExecutionHook checkoutExecutionHook)
     {
         return new CheckoutService(
@@ -511,6 +1047,14 @@ public sealed class Phase15ValidationTests
             new AuditLogService(context),
             checkoutExecutionHook,
             NullLogger<CheckoutService>.Instance);
+    }
+
+    private static RefundService BuildRefundService(PosDbContext context)
+    {
+        return new RefundService(
+            context,
+            new AuditLogService(context),
+            NullLogger<RefundService>.Instance);
     }
 
     private static async Task<PosDbContext> CreateSqliteContextAsync(string databasePath)

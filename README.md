@@ -72,6 +72,34 @@ dotnet build POS.slnx
 dotnet test POS.slnx
 ```
 
+## Offline EXE Distribution (Recommended)
+
+This project can be delivered to customers as an offline Windows EXE bundle.
+
+Build the bundle:
+
+```powershell
+./scripts/publish-client-bundle.ps1
+```
+
+The bundle is generated in `artifacts/client-bundle` and includes:
+
+- `Desktop/POS.Desktop.exe`
+- `configure-pos-client.ps1`
+- `clear-pos-seed-vars.ps1`
+- deployment docs
+
+Customer first-run configuration example:
+
+```powershell
+./configure-pos-client.ps1 -AdminUsername "admin" -AdminPassword "ChangeThisNow_123!" -StoreName "My Store" -TaxRatePercent 5
+```
+
+Detailed handoff docs:
+
+- `docs/OFFLINE_EXE_DEPLOYMENT.md`
+- `docs/PRODUCTION_READINESS_CHECKLIST.md`
+
 ## Run Desktop Checkout
 
 ```powershell
@@ -117,3 +145,4 @@ To apply migrations, start the API. Startup runs migration + optional admin seed
 - Partial refunds are not supported in this release; refund operations always reverse the full sale.
 - Backup and print behavior is validated in automated tests.
 - Checkout calls the same transactional service used by API flows to preserve integrity guarantees.
+- Desktop startup runs initial seed checks and will stop with a setup message if no active users exist.

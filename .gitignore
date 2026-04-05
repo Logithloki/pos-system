@@ -42,3 +42,4 @@ spool/
 # Publish output
 publish/
 out/
+artifacts/
