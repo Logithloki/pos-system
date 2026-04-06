@@ -69,52 +69,118 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
   - Checkout-only workflow
   - No access to admin management tabs
 
-## 6. Core Usage Guide
+## 6. Core Usage Guide (Step-by-Step)
 
-### A. Add Products (Admin)
+### A. Recommended first-day setup order (Admin)
+
+1. Open `Suppliers` tab and add suppliers first.
+2. Open `Inventory` tab and add products.
+3. Open `Users` tab and create cashier accounts.
+4. Open `Customers` tab and add known customers if needed.
+5. Open `Checkout` tab and run one test sale.
+6. Open `Backup/Restore` tab and create one manual backup.
+
+### B. Add supplier (Admin)
+
+1. Open `Suppliers` tab.
+2. Click `New Supplier`.
+3. Fill fields: Name, Contact, Address, Phone, Email.
+4. Click `Save`.
+5. Click `Refresh` and confirm supplier appears in list.
+
+### C. Add product (Admin)
 
 1. Open `Inventory` tab.
 2. Click `New Product`.
-3. Fill required fields:
-   - Barcode
-   - Name
-   - Price
-   - Cost
-   - Stock
-   - Reorder
+3. Fill fields:
+  - Barcode
+  - Name
+  - Price
+  - Cost
+  - Stock
+  - Reorder
+  - Supplier (optional)
 4. Click `Save Product`.
-5. Click `Refresh` to verify product appears in list.
+5. Click `Refresh` and verify product appears in grid.
 
-### B. Checkout (Cashier/Admin)
+Important:
 
-1. Go to `Checkout` tab.
-2. Scan or type barcode.
-3. Adjust quantity if needed.
-4. Confirm payment method and amount.
-5. Press `F2` or click Pay.
+1. Use `Save Product` to create or update products.
+2. `Apply Adjustment` is only for changing stock of an existing selected product.
 
-### C. Quick Add During Checkout
+### D. Create cashier user (Admin)
 
-If scanned barcode is unknown:
+1. Open `Users` tab.
+2. In `Create Cashier` panel, fill Username, Full Name, Email (optional), Password.
+3. Click `Create Cashier`.
+4. Click `Refresh` and verify user appears in grid.
+5. Use `Toggle Active` to enable or disable user access.
 
-1. Inline quick-add panel appears.
-2. Fill name, price, cost, stock.
-3. Save quick add.
-4. Item is added to cart.
+### E. Add customer (Admin)
 
-### D. Refund (Admin)
+1. Open `Customers` tab.
+2. Click `New Customer`.
+3. Fill Name, Phone, Email (optional), Loyalty Points.
+4. Click `Save`.
+5. Click `Refresh` and verify customer appears in list.
 
-1. Open refund flow.
-2. Select completed sale.
-3. Submit refund reversal.
+### F. Checkout sale (Cashier/Admin)
 
-Note: partial refunds are not supported in this release. Refund always reverses full sale.
+1. Open `Checkout` tab.
+2. Scan barcode or type barcode and press `Enter`.
+3. Repeat for each item.
+4. Optional: adjust quantities using `+`, `-`, and `Delete`.
+5. Select payment method.
+6. For cash, enter amount received (or use `Exact`, `+10`, `+20`, `+50`).
+7. Press `F2` or click `Pay (F2)`.
+8. Confirm receipt number in status message.
 
-### E. Backup and Restore (Admin)
+### G. Unknown barcode during checkout (Quick Add)
+
+1. Scan unknown barcode.
+2. Quick Add panel appears automatically.
+3. Fill Name, Price, Cost, Stock.
+4. Click `Save + Add`.
+5. Product is created and added to cart in one step.
+
+### H. Customer history lookup (Admin)
+
+1. Open `Customers` tab.
+2. Select a customer in the top grid.
+3. View lifetime spend and purchase count in snapshot card.
+4. View recent purchase history in the lower grid.
+
+### I. Reports (Admin)
+
+1. Open `Reports` tab.
+2. Choose period: Daily, Weekly, or Monthly.
+3. Click `Refresh`.
+4. Review Total Sales, Total Profit, Transactions, Average Sale.
+5. Review `Top Products` table.
+
+### J. Backup and restore (Admin)
+
+Create backup:
 
 1. Open `Backup/Restore` tab.
-2. Create manual backup regularly.
-3. Use restore only when required.
+2. Click `Create Backup`.
+3. Confirm backup appears in list.
+
+Restore backup:
+
+1. Open `Backup/Restore` tab.
+2. Select backup row.
+3. Tick `I confirm restore will replace current database`.
+4. Click `Restore Backup`.
+5. Re-open tabs and validate data after restore.
+
+### K. Refund handling
+
+This desktop build does not include a dedicated refund tab.
+
+1. Refunds are admin-only operations.
+2. In this release, refunds are full-sale reversal only (no partial refund).
+3. If your workflow requires refund UI from desktop, contact your software provider for the next release option.
 
 ## 7. Keyboard Shortcuts (Checkout)
 
@@ -139,6 +205,56 @@ Configured using `configure-pos-client.ps1` or user environment variables:
 - `POS_BACKUP_INTERVAL_MINUTES`: automatic backup interval
 - `POS_RECEIPT_MAX_RETRY_ATTEMPTS`: print retry attempts
 - `POS_RECEIPT_RETRY_DELAY_MS`: print retry delay
+
+### Method A (Recommended): Configure with script
+
+Run from the `client-bundle` folder:
+
+```powershell
+.\configure-pos-client.ps1 -AdminUsername "admin" -AdminPassword "ChangeThisNow_123!" -StoreName "My Store" -TaxRatePercent 5
+```
+
+Advanced example (custom paths + retry/backup tuning):
+
+```powershell
+.\configure-pos-client.ps1 -AdminUsername "admin" -AdminPassword "ChangeThisNow_123!" -StoreName "My Store" -TaxRatePercent 5 -DesktopDatabasePath "D:\POSData\pos.db" -DesktopBackupDirectory "D:\POSData\backups" -DesktopSpoolDirectory "D:\POSData\spool\receipts" -BackupRetentionDays 30 -BackupIntervalMinutes 240 -ReceiptRetryAttempts 3 -ReceiptRetryDelayMs 120
+```
+
+### Method B: Set environment variables manually
+
+Use this when changing only one or two values:
+
+```powershell
+[Environment]::SetEnvironmentVariable("POS_STORE_NAME", "My Store", "User")
+[Environment]::SetEnvironmentVariable("POS_TAX_RATE_PERCENT", "5", "User")
+[Environment]::SetEnvironmentVariable("POS_DESKTOP_DB_PATH", "D:\POSData\pos.db", "User")
+[Environment]::SetEnvironmentVariable("POS_DESKTOP_BACKUP_DIR", "D:\POSData\backups", "User")
+[Environment]::SetEnvironmentVariable("POS_DESKTOP_SPOOL_DIR", "D:\POSData\spool\receipts", "User")
+[Environment]::SetEnvironmentVariable("POS_BACKUP_RETENTION_DAYS", "30", "User")
+[Environment]::SetEnvironmentVariable("POS_BACKUP_INTERVAL_MINUTES", "240", "User")
+[Environment]::SetEnvironmentVariable("POS_RECEIPT_MAX_RETRY_ATTEMPTS", "3", "User")
+[Environment]::SetEnvironmentVariable("POS_RECEIPT_RETRY_DELAY_MS", "120", "User")
+```
+
+To remove a custom override and use default behavior again:
+
+```powershell
+[Environment]::SetEnvironmentVariable("POS_DESKTOP_DB_PATH", $null, "User")
+```
+
+### Apply changes
+
+1. Close POS application.
+2. Close terminal.
+3. Open a new terminal (or sign out/sign in).
+4. Start POS again.
+
+### Verify current configuration
+
+```powershell
+$keys = @("POS_STORE_NAME","POS_TAX_RATE_PERCENT","POS_DESKTOP_DB_PATH","POS_DESKTOP_BACKUP_DIR","POS_DESKTOP_SPOOL_DIR","POS_BACKUP_RETENTION_DAYS","POS_BACKUP_INTERVAL_MINUTES","POS_RECEIPT_MAX_RETRY_ATTEMPTS","POS_RECEIPT_RETRY_DELAY_MS")
+foreach ($k in $keys) { Write-Host "$k = $([Environment]::GetEnvironmentVariable($k,'User'))" }
+```
 
 ## 9. Data and Backup Locations (Default)
 
