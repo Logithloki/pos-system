@@ -99,6 +99,7 @@ Detailed handoff docs:
 
 - `docs/OFFLINE_EXE_DEPLOYMENT.md`
 - `docs/PRODUCTION_READINESS_CHECKLIST.md`
+- `docs/CLIENT_DEPLOYMENT_AND_USER_MANUAL.md`
 
 ## Run Desktop Checkout
 
